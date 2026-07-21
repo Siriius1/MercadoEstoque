@@ -1,0 +1,120 @@
+"use client";
+
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+
+type Section = "painel" | "produtos" | "fornecedores" | "movimentacoes" | "relatorios";
+type Product = { id:number; sku:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
+type Supplier = { id:number; name:string; document:string; contact:string; email:string; phone:string; productCount:number; active:boolean };
+type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; createdAt:string };
+type Summary = { totalProducts:number; lowStock:number; stockValue:number; retailValue:number; totalSuppliers:number };
+
+const money = (value = 0) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+const dateTime = (value:string) => new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(value.replace(" ", "T") + (value.includes("Z") ? "" : "Z")));
+const initials = (name:string) => name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase();
+
+export default function Dashboard() {
+  const [section, setSection] = useState<Section>("painel");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [movements, setMovements] = useState<Movement[]>([]);
+  const [summary, setSummary] = useState<Summary>({ totalProducts:0, lowStock:0, stockValue:0, retailValue:0, totalSuppliers:0 });
+  const [recent, setRecent] = useState<Movement[]>([]);
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState<"product"|"supplier"|"movement"|null>(null);
+  const [editing, setEditing] = useState<Product|Supplier|null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [p, s, m, d] = await Promise.all([fetch("/api/products"), fetch("/api/suppliers"), fetch("/api/movements"), fetch("/api/dashboard")]);
+      if (![p,s,m,d].every(response => response.ok)) throw new Error();
+      const [pd,sd,md,dd] = await Promise.all([p.json(), s.json(), m.json(), d.json()]);
+      setProducts(pd.products); setSuppliers(sd.suppliers); setMovements(md.movements); setSummary(dd.summary); setRecent(dd.recent);
+    } catch { setNotice("Não foi possível carregar o banco de dados."); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(""), 4500); return () => clearTimeout(timer); } }, [notice]);
+
+  const filteredProducts = useMemo(() => products.filter(p => `${p.name} ${p.sku} ${p.category} ${p.supplierName}`.toLowerCase().includes(search.toLowerCase())), [products, search]);
+  const filteredSuppliers = useMemo(() => suppliers.filter(s => `${s.name} ${s.document} ${s.contact}`.toLowerCase().includes(search.toLowerCase())), [suppliers, search]);
+  const filteredMovements = useMemo(() => movements.filter(m => `${m.productName} ${m.sku} ${m.type} ${m.reason}`.toLowerCase().includes(search.toLowerCase())), [movements, search]);
+  const lowProducts = products.filter(p => p.active && p.currentStock <= p.minimumStock);
+
+  const openNew = (kind:"product"|"supplier"|"movement") => { setEditing(null); setModal(kind); };
+  const openEdit = (kind:"product"|"supplier", item:Product|Supplier) => { setEditing(item); setModal(kind); };
+  const closeModal = () => { setModal(null); setEditing(null); };
+
+  async function submit(endpoint:string, data:Record<string, FormDataEntryValue>, method="POST") {
+    const response = await fetch(endpoint, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Não foi possível salvar.");
+    closeModal(); setNotice("Salvo com sucesso."); await load();
+  }
+
+  async function remove(kind:"products"|"suppliers", id:number) {
+    if (!confirm("Deseja desativar este cadastro? O histórico será preservado.")) return;
+    await fetch(`/api/${kind}/${id}`, { method:"DELETE" }); setNotice("Cadastro desativado."); await load();
+  }
+
+  const nav = [
+    { id:"painel", icon:"▦", label:"Painel" }, { id:"produtos", icon:"◇", label:"Produtos" },
+    { id:"fornecedores", icon:"♣", label:"Fornecedores" }, { id:"movimentacoes", icon:"⇄", label:"Movimentações" },
+    { id:"relatorios", icon:"↗", label:"Relatórios" },
+  ] as const;
+
+  return <div className="app-shell">
+    {menuOpen && <button className="menu-overlay" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
+    <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
+      <div className="brand"><span className="brand-mark">+</span><div><strong>Mercado<span>+</span></strong><small>GESTÃO DE ESTOQUE</small></div></div>
+      <nav>{nav.map(item => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setSection(item.id); setSearch(""); setMenuOpen(false); }}><span>{item.icon}</span>{item.label}</button>)}</nav>
+      <div className="sidebar-foot"><div className="avatar">AD</div><div><strong>Administrador</strong><small>Sistema local</small></div><span className="online-dot" /></div>
+    </aside>
+    <main>
+      <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className="icon-button" aria-label="Notificações">●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}</button></div></header>
+      <div className="content">
+        {notice && <div className="toast">{notice}</div>}
+        {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
+          {section === "painel" && <DashboardSection summary={summary} recent={recent} lowProducts={lowProducts} onNavigate={setSection} onMovement={() => openNew("movement")} />}
+          {section === "produtos" && <ProductsSection products={filteredProducts} search={search} setSearch={setSearch} onNew={() => openNew("product")} onEdit={p => openEdit("product", p)} onDelete={id => remove("products", id)} />}
+          {section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={id => remove("suppliers", id)} />}
+          {section === "movimentacoes" && <MovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
+          {section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
+        </>}
+      </div>
+    </main>
+    {modal === "product" && <ProductModal item={editing as Product|null} suppliers={suppliers} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit(editing ? `/api/products/${editing.id}` : "/api/products", data, editing ? "PUT" : "POST"); }} />}
+    {modal === "supplier" && <SupplierModal item={editing as Supplier|null} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit(editing ? `/api/suppliers/${editing.id}` : "/api/suppliers", data, editing ? "PUT" : "POST"); }} />}
+    {modal === "movement" && <MovementModal products={products.filter(p=>p.active)} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit("/api/movements", data); }} />}
+  </div>;
+}
+
+function PageTitle({eyebrow,title,description,action}:{eyebrow:string;title:string;description:string;action?:React.ReactNode}) { return <div className="page-heading"><div><small>{eyebrow}</small><h1>{title}</h1><p>{description}</p></div>{action}</div>; }
+function Stat({icon,label,value,detail,tone="green"}:{icon:string;label:string;value:string|number;detail:string;tone?:string}) { return <article className={`stat ${tone}`}><div className="stat-icon">{icon}</div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></article>; }
+
+function DashboardSection({summary,recent,lowProducts,onNavigate,onMovement}:{summary:Summary;recent:Movement[];lowProducts:Product[];onNavigate:(s:Section)=>void;onMovement:()=>void}) {
+  return <><PageTitle eyebrow="VISÃO GERAL" title="Painel" description="Acompanhe a saúde do seu estoque em tempo real." action={<button className="primary" onClick={onMovement}>+ Nova movimentação</button>} />
+    <section className="stats-grid"><Stat icon="▣" label="Produtos ativos" value={summary.totalProducts} detail="itens cadastrados"/><Stat icon="!" label="Estoque baixo" value={summary.lowStock} detail="precisam de atenção" tone="yellow"/><Stat icon="♣" label="Fornecedores" value={summary.totalSuppliers} detail="parceiros ativos" tone="blue"/><Stat icon="R$" label="Valor em estoque" value={money(summary.stockValue)} detail={`${money(summary.retailValue)} em vendas`} tone="cream"/></section>
+    <section className="dashboard-grid"><article className="panel"><div className="panel-head"><div><h2>Movimentações recentes</h2><p>Últimas entradas e saídas registradas</p></div><button className="link" onClick={()=>onNavigate("movimentacoes")}>Ver todas →</button></div><div className="activity-list">{recent.length ? recent.map(m=><div className="activity" key={m.id}><span className={`movement-icon ${m.type}`}>{m.type==="entrada"?"↓":m.type==="saida"?"↑":"⇄"}</span><div><strong>{m.productName}</strong><small>{m.reason || (m.type==="entrada"?"Entrada de estoque":"Saída de estoque")}</small></div><b className={m.type}>{m.type==="saida"?"-":"+"}{m.quantity} {m.unit}</b><time>{dateTime(m.createdAt)}</time></div>) : <Empty text="Nenhuma movimentação registrada."/>}</div></article>
+      <article className="panel"><div className="panel-head"><div><h2>Atenção ao estoque</h2><p>Produtos abaixo do mínimo</p></div><span className="count-pill">{lowProducts.length}</span></div><div className="low-list">{lowProducts.slice(0,5).map(p=><div key={p.id}><span className="mini-avatar">{initials(p.name)}</span><div><strong>{p.name}</strong><small>Mínimo: {p.minimumStock} {p.unit}</small></div><b>{p.currentStock} <small>{p.unit}</small></b></div>)}{!lowProducts.length&&<Empty text="Tudo certo por aqui."/>}</div><button className="wide-link" onClick={()=>onNavigate("produtos")}>Gerenciar produtos</button></article></section></>;
+}
+
+function SearchBar({value,onChange,placeholder}:{value:string;onChange:(v:string)=>void;placeholder:string}) { return <label className="search"><span>⌕</span><input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}/></label>; }
+function ProductsSection({products,search,setSearch,onNew,onEdit,onDelete}:{products:Product[];search:string;setSearch:(s:string)=>void;onNew:()=>void;onEdit:(p:Product)=>void;onDelete:(id:number)=>void}) { return <><PageTitle eyebrow="CATÁLOGO" title="Produtos" description="Cadastre e acompanhe todos os itens do mercado." action={<button className="primary" onClick={onNew}>+ Novo produto</button>}/><div className="toolbar"><SearchBar value={search} onChange={setSearch} placeholder="Buscar produto, código ou categoria..."/><span>{products.length} produtos</span></div><article className="table-card"><table><thead><tr><th>Produto</th><th>Código</th><th>Fornecedor</th><th>Custo</th><th>Venda</th><th>Estoque</th><th>Status</th><th></th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td><div className="product-cell"><span className="mini-avatar">{initials(p.name)}</span><div><strong>{p.name}</strong><small>{p.category}</small></div></div></td><td><code>{p.sku}</code></td><td>{p.supplierName || <em>Não vinculado</em>}</td><td>{money(p.costPrice)}</td><td><strong>{money(p.salePrice)}</strong></td><td><StockBar product={p}/></td><td><span className={`status ${!p.active?"inactive":p.currentStock<=p.minimumStock?"low":"ok"}`}>{!p.active?"Inativo":p.currentStock<=p.minimumStock?"Estoque baixo":"Em estoque"}</span></td><td><div className="row-actions"><button onClick={()=>onEdit(p)} title="Editar">✎</button><button onClick={()=>onDelete(p.id)} title="Desativar">×</button></div></td></tr>)}</tbody></table>{!products.length&&<Empty text="Nenhum produto encontrado."/>}<div className="table-foot">Mostrando {products.length} produtos</div></article></>; }
+function StockBar({product}:{product:Product}) { const pct=Math.min(100,Math.round(product.currentStock/Math.max(product.minimumStock*2,1)*100)); return <div className="stock-cell"><span><i style={{width:`${pct}%`}} className={product.currentStock<=product.minimumStock?"danger":""}/></span><b>{product.currentStock} <small>{product.unit}</small></b></div>; }
+
+function SuppliersSection({suppliers,search,setSearch,onNew,onEdit,onDelete}:{suppliers:Supplier[];search:string;setSearch:(s:string)=>void;onNew:()=>void;onEdit:(s:Supplier)=>void;onDelete:(id:number)=>void}) { return <><PageTitle eyebrow="PARCEIROS" title="Fornecedores" description="Cadastre e mantenha os contatos dos seus parceiros." action={<button className="primary" onClick={onNew}>+ Novo fornecedor</button>}/><div className="toolbar"><SearchBar value={search} onChange={setSearch} placeholder="Buscar fornecedor, documento ou contato..."/><span>{suppliers.length} fornecedores</span></div><section className="supplier-grid">{suppliers.map(s=><article className={`supplier-card ${!s.active?"muted":""}`} key={s.id}><div className="supplier-top"><span className="supplier-logo">{initials(s.name)}</span><span className={`status ${s.active?"ok":"inactive"}`}>{s.active?"Ativo":"Inativo"}</span></div><h3>{s.name}</h3><p>{s.document || "Documento não informado"}</p><dl><div><dt>Contato</dt><dd>{s.contact || "—"}</dd></div><div><dt>E-mail</dt><dd>{s.email || "—"}</dd></div><div><dt>Telefone</dt><dd>{s.phone || "—"}</dd></div></dl><footer><span><b>{s.productCount}</b> produtos vinculados</span><div className="row-actions"><button onClick={()=>onEdit(s)}>✎</button><button onClick={()=>onDelete(s.id)}>×</button></div></footer></article>)}</section>{!suppliers.length&&<Empty text="Nenhum fornecedor encontrado."/>}</>; }
+
+function MovementsSection({movements,search,setSearch,onNew}:{movements:Movement[];search:string;setSearch:(s:string)=>void;onNew:()=>void}) { return <><PageTitle eyebrow="HISTÓRICO" title="Movimentações" description="Rastreie cada entrada, saída e ajuste de estoque." action={<button className="primary" onClick={onNew}>+ Registrar movimentação</button>}/><div className="toolbar"><SearchBar value={search} onChange={setSearch} placeholder="Buscar produto, código ou motivo..."/><span>{movements.length} registros</span></div><article className="table-card"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Quantidade</th><th>Estoque anterior</th><th>Estoque final</th><th>Motivo</th></tr></thead><tbody>{movements.map(m=><tr key={m.id}><td>{dateTime(m.createdAt)}</td><td><div className="product-cell"><span className="mini-avatar">{initials(m.productName)}</span><div><strong>{m.productName}</strong><small>{m.sku}</small></div></div></td><td><span className={`movement-tag ${m.type}`}>{m.type}</span></td><td><strong>{m.type==="saida"?"-":"+"}{m.quantity} {m.unit}</strong></td><td>{m.previousStock} {m.unit}</td><td>{m.resultingStock} {m.unit}</td><td>{m.reason || "—"}</td></tr>)}</tbody></table>{!movements.length&&<Empty text="Nenhuma movimentação encontrada."/>}</article></>; }
+
+function ReportsSection({products,movements,summary}:{products:Product[];movements:Movement[];summary:Summary}) { const categories=Object.entries(products.reduce<Record<string,number>>((a,p)=>{a[p.category]=(a[p.category]||0)+p.currentStock*p.costPrice;return a;},{})).sort((a,b)=>b[1]-a[1]); const max=Math.max(...categories.map(c=>c[1]),1); return <><PageTitle eyebrow="ANÁLISE" title="Relatórios" description="Indicadores para tomar decisões melhores sobre o estoque."/><section className="stats-grid"><Stat icon="R$" label="Custo do estoque" value={money(summary.stockValue)} detail="capital investido"/><Stat icon="↗" label="Valor de venda" value={money(summary.retailValue)} detail="potencial de receita" tone="blue"/><Stat icon="%" label="Margem potencial" value={summary.retailValue?`${Math.round((summary.retailValue-summary.stockValue)/summary.retailValue*100)}%`:"0%"} detail="sobre valor de venda" tone="yellow"/><Stat icon="⇄" label="Movimentações" value={movements.length} detail="registros no histórico" tone="cream"/></section><section className="dashboard-grid reports"><article className="panel"><div className="panel-head"><div><h2>Valor por categoria</h2><p>Distribuição do custo atual</p></div></div><div className="bars">{categories.map(([name,value])=><div key={name}><div><span>{name}</span><b>{money(value)}</b></div><i><span style={{width:`${value/max*100}%`}}/></i></div>)}</div></article><article className="panel"><div className="panel-head"><div><h2>Resumo operacional</h2><p>Pontos importantes do cadastro</p></div></div><div className="report-list"><div><span>Produtos sem fornecedor</span><strong>{products.filter(p=>!p.supplierId).length}</strong></div><div><span>Produtos com estoque baixo</span><strong>{products.filter(p=>p.currentStock<=p.minimumStock).length}</strong></div><div><span>Produtos inativos</span><strong>{products.filter(p=>!p.active).length}</strong></div><div><span>Lucro bruto potencial</span><strong>{money(summary.retailValue-summary.stockValue)}</strong></div></div></article></section></>; }
+
+function Modal({title,description,onClose,children}:{title:string;description:string;onClose:()=>void;children:React.ReactNode}) { return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><div className="modal"><button className="modal-close" onClick={onClose}>×</button><small>Mercado+</small><h2>{title}</h2><p>{description}</p>{children}</div></div>; }
+function FormActions({onClose}:{onClose:()=>void}) { return <div className="form-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Salvar cadastro</button></div>; }
+function ProductModal({item,suppliers,onClose,onSubmit}:{item:Product|null;suppliers:Supplier[];onClose:()=>void;onSubmit:(e:FormEvent<HTMLFormElement>)=>Promise<void>}) { const [error,setError]=useState(""); return <Modal title={item?"Editar produto":"Novo produto"} description="Preencha as informações do item do seu estoque." onClose={onClose}><form onSubmit={async e=>{e.preventDefault();try{await onSubmit(e)}catch(err){setError(err instanceof Error?err.message:"Erro ao salvar.")}}}><div className="form-grid"><label className="span-2">Nome do produto<input name="name" required defaultValue={item?.name}/></label><label>Código / SKU<input name="sku" required defaultValue={item?.sku}/></label><label>Categoria<input name="category" defaultValue={item?.category||"Mercearia"}/></label><label>Unidade<select name="unit" defaultValue={item?.unit||"un"}><option>un</option><option>kg</option><option>pct</option><option>cx</option><option>lt</option></select></label><label>Fornecedor<select name="supplierId" defaultValue={item?.supplierId||""}><option value="">Não vinculado</option>{suppliers.filter(s=>s.active).map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select></label><label>Preço de custo<input name="costPrice" type="number" min="0" step="0.01" defaultValue={item?.costPrice||0}/></label><label>Preço de venda<input name="salePrice" type="number" min="0" step="0.01" defaultValue={item?.salePrice||0}/></label>{!item&&<label>Estoque inicial<input name="currentStock" type="number" min="0" step="0.001" defaultValue="0"/></label>}<label>Estoque mínimo<input name="minimumStock" type="number" min="0" step="0.001" defaultValue={item?.minimumStock||0}/></label></div>{error&&<p className="form-error">{error}</p>}<FormActions onClose={onClose}/></form></Modal>; }
+function SupplierModal({item,onClose,onSubmit}:{item:Supplier|null;onClose:()=>void;onSubmit:(e:FormEvent<HTMLFormElement>)=>Promise<void>}) { const [error,setError]=useState(""); return <Modal title={item?"Editar fornecedor":"Novo fornecedor"} description="Mantenha os dados comerciais do parceiro organizados." onClose={onClose}><form onSubmit={async e=>{e.preventDefault();try{await onSubmit(e)}catch(err){setError(err instanceof Error?err.message:"Erro ao salvar.")}}}><div className="form-grid"><label className="span-2">Nome / Razão social<input name="name" required defaultValue={item?.name}/></label><label>CPF ou CNPJ<input name="document" defaultValue={item?.document}/></label><label>Pessoa de contato<input name="contact" defaultValue={item?.contact}/></label><label>E-mail<input name="email" type="email" defaultValue={item?.email}/></label><label>Telefone<input name="phone" defaultValue={item?.phone}/></label></div>{error&&<p className="form-error">{error}</p>}<FormActions onClose={onClose}/></form></Modal>; }
+function MovementModal({products,onClose,onSubmit}:{products:Product[];onClose:()=>void;onSubmit:(e:FormEvent<HTMLFormElement>)=>Promise<void>}) { const [type,setType]=useState("entrada"); const [selected,setSelected]=useState<Product|null>(products[0]||null); const [error,setError]=useState(""); return <Modal title="Registrar movimentação" description="Toda alteração fica salva no histórico do produto." onClose={onClose}><form onSubmit={async e=>{e.preventDefault();try{await onSubmit(e)}catch(err){setError(err instanceof Error?err.message:"Erro ao salvar.")}}}><div className="movement-choice"><label><input type="radio" name="type" value="entrada" checked={type==="entrada"} onChange={e=>setType(e.target.value)}/><span>↓</span> Entrada</label><label><input type="radio" name="type" value="saida" checked={type==="saida"} onChange={e=>setType(e.target.value)}/><span>↑</span> Saída</label><label><input type="radio" name="type" value="ajuste" checked={type==="ajuste"} onChange={e=>setType(e.target.value)}/><span>⇄</span> Ajuste</label></div><div className="form-grid"><label className="span-2">Produto<select name="productId" required onChange={e=>setSelected(products.find(p=>p.id===Number(e.target.value))||null)}>{products.map(p=><option value={p.id} key={p.id}>{p.sku} — {p.name} ({p.currentStock} {p.unit})</option>)}</select></label><label>{type==="ajuste"?"Novo saldo":"Quantidade"}<input name="quantity" required type="number" min="0" step="0.001"/></label><label>Custo unitário<input name="unitCost" type="number" min="0" step="0.01" defaultValue={selected?.costPrice||0}/></label><label className="span-2">Motivo<input name="reason" placeholder={type==="entrada"?"Ex.: compra do fornecedor":type==="saida"?"Ex.: perda, venda ou consumo":"Ex.: inventário físico"}/></label><label className="span-2">Observações<textarea name="notes" rows={2}/></label></div>{error&&<p className="form-error">{error}</p>}<FormActions onClose={onClose}/></form></Modal>; }
+function Empty({text}:{text:string}) { return <div className="empty"><span>◇</span><p>{text}</p></div>; }

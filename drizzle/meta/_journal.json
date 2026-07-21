@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1784675438302,
+      "tag": "0000_mercado_estoque",
+      "breakpoints": true
+    }
+  ]
+}
