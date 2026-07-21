@@ -36,3 +36,9 @@ export async function getDb() {
   await initialization;
   return drizzle(env.DB, { schema });
 }
+
+export async function getD1() {
+  initialization ??= initializeDatabase();
+  await initialization;
+  return env.DB;
+}
