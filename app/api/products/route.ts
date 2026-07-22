@@ -4,7 +4,7 @@ import { movements, products, suppliers } from "../../../db/schema";
 
 export async function GET() {
   const db = await getDb();
-  const rows = await db.select({ id: products.id, sku: products.sku, name: products.name, category: products.category, unit: products.unit, costPrice: products.costPrice, salePrice: products.salePrice, currentStock: products.currentStock, minimumStock: products.minimumStock, supplierId: products.supplierId, supplierName: suppliers.name, active: products.active }).from(products).leftJoin(suppliers, eq(products.supplierId, suppliers.id)).orderBy(asc(sql<number>`CAST(REPLACE(${products.sku}, '#', '') AS INTEGER)`));
+  const rows = await db.select({ id: products.id, sku: products.sku, name: products.name, category: products.category, unit: products.unit, costPrice: products.costPrice, salePrice: products.salePrice, salePriceUpdatedAt: products.salePriceUpdatedAt, currentStock: products.currentStock, minimumStock: products.minimumStock, supplierId: products.supplierId, supplierName: suppliers.name, active: products.active }).from(products).leftJoin(suppliers, eq(products.supplierId, suppliers.id)).orderBy(asc(sql<number>`CAST(REPLACE(${products.sku}, '#', '') AS INTEGER)`));
   return Response.json({ products: rows });
 }
 

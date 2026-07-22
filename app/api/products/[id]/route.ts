@@ -4,9 +4,28 @@ import { products } from "../../../../db/schema";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
+  const productId = Number(id);
   const body = await request.json() as Record<string, unknown>;
-  const [product] = await (await getDb()).update(products).set({ name: String(body.name ?? "").trim(), category: String(body.category ?? "Mercearia"), unit: String(body.unit ?? "un"), costPrice: Number(body.costPrice) || 0, salePrice: Number(body.salePrice) || 0, minimumStock: Number(body.minimumStock) || 0, supplierId: body.supplierId ? Number(body.supplierId) : null, active: body.active !== false, updatedAt: new Date().toISOString() }).where(eq(products.id, Number(id))).returning();
-  return product ? Response.json({ product }) : Response.json({ error: "Produto não encontrado." }, { status: 404 });
+  const db = await getDb();
+  const [existing] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
+  if (!existing) return Response.json({ error: "Produto não encontrado." }, { status: 404 });
+
+  const requestedSalePrice = Number(body.salePrice);
+  const salePrice = Number.isFinite(requestedSalePrice) ? requestedSalePrice : existing.salePrice;
+  const now = new Date().toISOString();
+  const [product] = await db.update(products).set({
+    name: String(body.name ?? "").trim(),
+    category: String(body.category ?? "Mercearia"),
+    unit: String(body.unit ?? "un"),
+    costPrice: Number(body.costPrice) || 0,
+    salePrice,
+    salePriceUpdatedAt: salePrice !== existing.salePrice ? now : existing.salePriceUpdatedAt,
+    minimumStock: Number(body.minimumStock) || 0,
+    supplierId: body.supplierId ? Number(body.supplierId) : null,
+    active: body.active !== false,
+    updatedAt: now,
+  }).where(eq(products.id, productId)).returning();
+  return Response.json({ product });
 }
 
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {

@@ -9,7 +9,7 @@ async function initializeDatabase() {
   const d1 = env.DB;
   await d1.batch([
     d1.prepare("CREATE TABLE IF NOT EXISTS suppliers (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, name text NOT NULL, document text DEFAULT '' NOT NULL, contact text DEFAULT '' NOT NULL, email text DEFAULT '' NOT NULL, phone text DEFAULT '' NOT NULL, active integer DEFAULT 1 NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
-    d1.prepare("CREATE TABLE IF NOT EXISTS products (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, sku text NOT NULL UNIQUE, name text NOT NULL, category text DEFAULT 'Mercearia' NOT NULL, unit text DEFAULT 'un' NOT NULL, cost_price real DEFAULT 0 NOT NULL, sale_price real DEFAULT 0 NOT NULL, current_stock real DEFAULT 0 NOT NULL, minimum_stock real DEFAULT 0 NOT NULL, supplier_id integer REFERENCES suppliers(id) ON DELETE SET NULL, active integer DEFAULT 1 NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
+    d1.prepare("CREATE TABLE IF NOT EXISTS products (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, sku text NOT NULL UNIQUE, name text NOT NULL, category text DEFAULT 'Mercearia' NOT NULL, unit text DEFAULT 'un' NOT NULL, cost_price real DEFAULT 0 NOT NULL, sale_price real DEFAULT 0 NOT NULL, sale_price_updated_at text DEFAULT CURRENT_TIMESTAMP, current_stock real DEFAULT 0 NOT NULL, minimum_stock real DEFAULT 0 NOT NULL, supplier_id integer REFERENCES suppliers(id) ON DELETE SET NULL, active integer DEFAULT 1 NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
     d1.prepare("CREATE TABLE IF NOT EXISTS movements (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, product_id integer NOT NULL REFERENCES products(id) ON DELETE RESTRICT, type text NOT NULL, quantity real NOT NULL, previous_stock real NOT NULL, resulting_stock real NOT NULL, unit_cost real DEFAULT 0 NOT NULL, reason text DEFAULT '' NOT NULL, notes text DEFAULT '' NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
     d1.prepare("CREATE TABLE IF NOT EXISTS product_sequence (id integer PRIMARY KEY NOT NULL, last_value integer DEFAULT 0 NOT NULL)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS products_supplier_idx ON products (supplier_id)"),
@@ -17,6 +17,11 @@ async function initializeDatabase() {
     d1.prepare("CREATE INDEX IF NOT EXISTS movements_product_idx ON movements (product_id)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS movements_created_idx ON movements (created_at)"),
   ]);
+  const productColumns = await d1.prepare("PRAGMA table_info(products)").all<{ name: string }>();
+  if (!productColumns.results.some((column) => column.name === "sale_price_updated_at")) {
+    await d1.prepare("ALTER TABLE products ADD COLUMN sale_price_updated_at text").run();
+    await d1.prepare("UPDATE products SET sale_price_updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP) WHERE sale_price_updated_at IS NULL").run();
+  }
   const count = await d1.prepare("SELECT count(*) AS total FROM products").first<{ total: number }>();
   if (!count?.total) await d1.batch([
     d1.prepare("INSERT INTO suppliers (name,document,contact,email,phone) VALUES (?,?,?,?,?)").bind("Walmart Distribuição", "00.000.000/0001-00", "Central comercial", "compras@walmart.com.br", "(11) 4000-1000"),

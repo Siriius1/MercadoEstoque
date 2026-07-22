@@ -26,6 +26,7 @@ export const products = sqliteTable("products", {
   unit: text("unit").notNull().default("un"),
   costPrice: real("cost_price").notNull().default(0),
   salePrice: real("sale_price").notNull().default(0),
+  salePriceUpdatedAt: text("sale_price_updated_at").default(sql`CURRENT_TIMESTAMP`),
   currentStock: real("current_stock").notNull().default(0),
   minimumStock: real("minimum_stock").notNull().default(0),
   supplierId: integer("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
