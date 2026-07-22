@@ -13,6 +13,11 @@ export const suppliers = sqliteTable("suppliers", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const productSequence = sqliteTable("product_sequence", {
+  id: integer("id").primaryKey(),
+  lastValue: integer("last_value").notNull().default(0),
+});
+
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   sku: text("sku").notNull().unique(),

@@ -8,6 +8,13 @@
       "when": 1784675438302,
       "tag": "0000_mercado_estoque",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784678802159,
+      "tag": "0001_product_sequence",
+      "breakpoints": true
     }
   ]
 }
