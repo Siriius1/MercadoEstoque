@@ -1,22 +1,54 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Mode = "login" | "register" | "forgot" | "reset" | "verify";
 
 const normalizeEmailInput = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 
-export default function AuthScreen({ initialMode, token }: { initialMode: Mode; token: string }) {
+type GoogleAccounts = { id: { initialize: (options: { client_id: string; callback: (response: { credential: string }) => void; auto_select?: boolean; cancel_on_tap_outside?: boolean }) => void; renderButton: (element: HTMLElement, options: Record<string, string | number>) => void } };
+
+declare global {
+  interface Window { google?: { accounts: GoogleAccounts } }
+}
+
+export default function AuthScreen({ initialMode, token, googleClientId }: { initialMode: Mode; token: string; googleClientId: string }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(initialMode === "verify");
   const [previewUrl, setPreviewUrl] = useState("");
+  const googleButton = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialMode !== "verify") return;
     void request("/api/auth/verify", { token });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMode, token]);
+
+  useEffect(() => {
+    if (initialMode !== "login" || !googleClientId) return;
+    const render = () => {
+      if (!window.google || !googleButton.current) return;
+      googleButton.current.replaceChildren();
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        callback: response => { void request("/api/auth/google", { credential: response.credential }); },
+      });
+      window.google.accounts.id.renderButton(googleButton.current, { type: "standard", theme: "outline", size: "large", shape: "rectangular", text: "continue_with", logo_alignment: "left", width: 342 });
+    };
+    if (window.google) { render(); return; }
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+    if (existing) { existing.addEventListener("load", render, { once: true }); return () => existing.removeEventListener("load", render); }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = render;
+    document.head.appendChild(script);
+    return () => { script.onload = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMode, googleClientId]);
 
   async function request(endpoint: string, payload: Record<string, unknown>) {
     setBusy(true); setError(""); setMessage(""); setPreviewUrl("");
@@ -63,6 +95,7 @@ export default function AuthScreen({ initialMode, token }: { initialMode: Mode; 
         <span className="auth-eyebrow">BEM-VINDO AO MERCADO+</span>
         <h2>{title}</h2>
         <p>{description}</p>
+        {initialMode === "login" && <><div className="google-login">{googleClientId ? <div ref={googleButton}/> : <button type="button" disabled title="Falta configurar o identificador do Google">Continuar com Google</button>}</div><div className="auth-divider"><span>ou entre com e-mail</span></div></>}
         {initialMode === "verify" ? <div className="auth-result">{busy ? "Confirmando..." : message || error}</div> :
           <form onSubmit={submit}>
             {initialMode === "register" && <label>Nome completo<input name="name" required autoComplete="name" placeholder="Seu nome"/></label>}

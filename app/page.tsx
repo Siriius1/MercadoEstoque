@@ -1,6 +1,7 @@
 import Dashboard from "./dashboard";
 import AuthScreen from "./auth-screen";
 import { getSessionUser } from "./auth";
+import { getGoogleClientId } from "./google-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,5 +11,5 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ a
   const params = await searchParams;
   const allowed = ["login", "register", "forgot", "reset", "verify"] as const;
   const initialMode = allowed.includes(params.auth as typeof allowed[number]) ? params.auth as typeof allowed[number] : "login";
-  return <AuthScreen initialMode={initialMode} token={params.token ?? ""} />;
+  return <AuthScreen initialMode={initialMode} token={params.token ?? ""} googleClientId={getGoogleClientId()} />;
 }

@@ -53,6 +53,7 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  googleSub: text("google_sub").unique(),
   emailVerifiedAt: text("email_verified_at"),
   role: text("role").notNull().default("admin"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

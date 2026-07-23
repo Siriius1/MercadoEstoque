@@ -16,7 +16,7 @@ async function initializeDatabase() {
     d1.prepare("CREATE INDEX IF NOT EXISTS products_name_idx ON products (name)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS movements_product_idx ON movements (product_id)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS movements_created_idx ON movements (created_at)"),
-    d1.prepare("CREATE TABLE IF NOT EXISTS users (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, name text NOT NULL, email text NOT NULL UNIQUE, password_hash text NOT NULL, email_verified_at text, role text DEFAULT 'admin' NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
+    d1.prepare("CREATE TABLE IF NOT EXISTS users (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, name text NOT NULL, email text NOT NULL UNIQUE, password_hash text NOT NULL, google_sub text UNIQUE, email_verified_at text, role text DEFAULT 'admin' NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
     d1.prepare("CREATE TABLE IF NOT EXISTS auth_sessions (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, expires_at text NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
     d1.prepare("CREATE TABLE IF NOT EXISTS auth_tokens (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, type text NOT NULL, expires_at text NOT NULL, used_at text, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS users_email_idx ON users (email)"),
@@ -29,6 +29,11 @@ async function initializeDatabase() {
   if (!productColumns.results.some((column) => column.name === "sale_price_updated_at")) {
     await d1.prepare("ALTER TABLE products ADD COLUMN sale_price_updated_at text").run();
     await d1.prepare("UPDATE products SET sale_price_updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP) WHERE sale_price_updated_at IS NULL").run();
+  }
+  const userColumns = await d1.prepare("PRAGMA table_info(users)").all<{ name: string }>();
+  if (!userColumns.results.some((column) => column.name === "google_sub")) {
+    await d1.prepare("ALTER TABLE users ADD COLUMN google_sub text").run();
+    await d1.prepare("CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_unique ON users (google_sub)").run();
   }
   const count = await d1.prepare("SELECT count(*) AS total FROM products").first<{ total: number }>();
   if (!count?.total) await d1.batch([
