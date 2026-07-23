@@ -1,14 +1,19 @@
 import { asc, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../db";
 import { movements, products, suppliers } from "../../../db/schema";
+import { requireApiUser } from "../../auth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const db = await getDb();
   const rows = await db.select({ id: products.id, sku: products.sku, name: products.name, category: products.category, unit: products.unit, costPrice: products.costPrice, salePrice: products.salePrice, salePriceUpdatedAt: products.salePriceUpdatedAt, currentStock: products.currentStock, minimumStock: products.minimumStock, supplierId: products.supplierId, supplierName: suppliers.name, active: products.active }).from(products).leftJoin(suppliers, eq(products.supplierId, suppliers.id)).orderBy(asc(products.name));
   return Response.json({ products: rows });
 }
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   try {
     const body = await request.json() as Record<string, unknown>;
     const name = String(body.name ?? "").trim();

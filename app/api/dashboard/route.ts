@@ -1,8 +1,11 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { movements, products, suppliers } from "../../../db/schema";
+import { requireApiUser } from "../../auth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const db = await getDb();
   const [summary] = await db.select({ totalProducts: sql<number>`count(*)`, lowStock: sql<number>`sum(case when ${products.currentStock} <= ${products.minimumStock} then 1 else 0 end)`, stockValue: sql<number>`sum(${products.currentStock} * ${products.costPrice})`, retailValue: sql<number>`sum(${products.currentStock} * ${products.salePrice})` }).from(products).where(eq(products.active, true));
   const [supplierSummary] = await db.select({ totalSuppliers: sql<number>`count(*)` }).from(suppliers).where(eq(suppliers.active, true));

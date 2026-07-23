@@ -1,15 +1,23 @@
 import { eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { suppliers } from "../../../../db/schema";
+import { formatPhone, isValidEmail, normalizeEmail } from "../../../validation";
+import { requireApiUser } from "../../../auth";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   const body = await request.json() as Record<string, unknown>;
-  const [supplier] = await (await getDb()).update(suppliers).set({ name: String(body.name ?? "").trim(), document: String(body.document ?? ""), contact: String(body.contact ?? ""), email: String(body.email ?? ""), phone: String(body.phone ?? ""), active: body.active !== false, updatedAt: new Date().toISOString() }).where(eq(suppliers.id, Number(id))).returning();
+  const email = normalizeEmail(body.email);
+  if (email && !isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
+  const [supplier] = await (await getDb()).update(suppliers).set({ name: String(body.name ?? "").trim(), document: String(body.document ?? ""), contact: String(body.contact ?? ""), email, phone: formatPhone(body.phone), active: body.active !== false, updatedAt: new Date().toISOString() }).where(eq(suppliers.id, Number(id))).returning();
   return supplier ? Response.json({ supplier }) : Response.json({ error: "Fornecedor não encontrado." }, { status: 404 });
 }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   const supplierId = Number(id);
   if (!Number.isInteger(supplierId)) return Response.json({ error: "Fornecedor inválido." }, { status: 400 });

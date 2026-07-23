@@ -1,8 +1,11 @@
 import { eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { products } from "../../../../db/schema";
+import { requireApiUser } from "../../../auth";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   const productId = Number(id);
   const body = await request.json() as Record<string, unknown>;
@@ -28,7 +31,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   return Response.json({ product });
 }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const { id } = await context.params;
   const productId = Number(id);
   if (!Number.isInteger(productId)) return Response.json({ error: "Produto inválido." }, { status: 400 });

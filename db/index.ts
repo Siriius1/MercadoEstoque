@@ -16,6 +16,14 @@ async function initializeDatabase() {
     d1.prepare("CREATE INDEX IF NOT EXISTS products_name_idx ON products (name)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS movements_product_idx ON movements (product_id)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS movements_created_idx ON movements (created_at)"),
+    d1.prepare("CREATE TABLE IF NOT EXISTS users (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, name text NOT NULL, email text NOT NULL UNIQUE, password_hash text NOT NULL, email_verified_at text, role text DEFAULT 'admin' NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
+    d1.prepare("CREATE TABLE IF NOT EXISTS auth_sessions (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, expires_at text NOT NULL, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
+    d1.prepare("CREATE TABLE IF NOT EXISTS auth_tokens (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash text NOT NULL UNIQUE, type text NOT NULL, expires_at text NOT NULL, used_at text, created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
+    d1.prepare("CREATE INDEX IF NOT EXISTS users_email_idx ON users (email)"),
+    d1.prepare("CREATE INDEX IF NOT EXISTS auth_sessions_user_idx ON auth_sessions (user_id)"),
+    d1.prepare("CREATE INDEX IF NOT EXISTS auth_sessions_token_idx ON auth_sessions (token_hash)"),
+    d1.prepare("CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens (user_id)"),
+    d1.prepare("CREATE INDEX IF NOT EXISTS auth_tokens_token_idx ON auth_tokens (token_hash)"),
   ]);
   const productColumns = await d1.prepare("PRAGMA table_info(products)").all<{ name: string }>();
   if (!productColumns.results.some((column) => column.name === "sale_price_updated_at")) {

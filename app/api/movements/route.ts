@@ -1,13 +1,18 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { movements, products } from "../../../db/schema";
+import { requireApiUser } from "../../auth";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const rows = await (await getDb()).select({ id: movements.id, productId: movements.productId, productName: products.name, sku: products.sku, unit: products.unit, type: movements.type, quantity: movements.quantity, previousStock: movements.previousStock, resultingStock: movements.resultingStock, unitCost: movements.unitCost, reason: movements.reason, notes: movements.notes, createdAt: movements.createdAt }).from(movements).innerJoin(products, eq(movements.productId, products.id)).orderBy(desc(movements.createdAt), desc(movements.id)).limit(200);
   return Response.json({ movements: rows });
 }
 
 export async function POST(request: Request) {
+  const unauthorized = await requireApiUser(request);
+  if (unauthorized) return unauthorized;
   const body = await request.json() as Record<string, unknown>;
   const productId = Number(body.productId);
   const type = String(body.type) as "entrada" | "saida" | "ajuste";
