@@ -33,6 +33,7 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
                 "salePrice": 10,
                 "currentStock": 3,
                 "minimumStock": 1,
+                "supplierId": "",
             },
         )
         assert product_response.status_code == 201

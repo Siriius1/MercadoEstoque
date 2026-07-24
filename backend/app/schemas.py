@@ -20,6 +20,11 @@ class ProductInput(BaseModel):
     def empty_barcode_to_none(cls, value: object) -> object:
         return None if value in ("", None) else str(value).strip()
 
+    @field_validator("supplierId", mode="before")
+    @classmethod
+    def empty_supplier_to_none(cls, value: object) -> object:
+        return None if value in ("", None) else value
+
 
 class SupplierInput(BaseModel):
     name: str = Field(min_length=1, max_length=180)

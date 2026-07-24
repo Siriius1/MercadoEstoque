@@ -59,7 +59,12 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   async function submit(endpoint:string, data:Record<string, FormDataEntryValue>, method="POST") {
     const response = await fetch(apiUrl(endpoint), { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Não foi possível salvar.");
+    if (!response.ok) {
+      const validationMessage=Array.isArray(result.detail)&&result.detail[0]?.msg
+        ? `Confira o campo ${String(result.detail[0]?.loc?.at(-1)||"informado")}.`
+        : typeof result.detail==="string" ? result.detail : "";
+      throw new Error(result.error || validationMessage || "Não foi possível salvar.");
+    }
     closeModal(); setNotice("Salvo com sucesso."); await load();
   }
 
