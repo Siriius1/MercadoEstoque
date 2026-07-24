@@ -32,12 +32,12 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
                 "costPrice": 4.5,
                 "salePrice": 10,
                 "currentStock": 3,
-                "minimumStock": 1,
                 "supplierId": "",
             },
         )
         assert product_response.status_code == 201
         product_id = product_response.json()["product"]["id"]
+        assert product_response.json()["product"]["minimumStock"] == 5
 
         sale_response = client.post(
             "/api/sales",

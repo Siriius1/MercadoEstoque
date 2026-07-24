@@ -56,7 +56,7 @@ class Product(Base):
     sale_price: Mapped[Decimal] = mapped_column(money_type, default=0)
     sale_price_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
     current_stock: Mapped[Decimal] = mapped_column(quantity_type, default=0)
-    minimum_stock: Mapped[Decimal] = mapped_column(quantity_type, default=0)
+    minimum_stock: Mapped[Decimal] = mapped_column(quantity_type, default=5, server_default="5")
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=True, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

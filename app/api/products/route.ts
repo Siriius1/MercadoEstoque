@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const sku = `#${String(sequence.last_value).padStart(4, "0")}`;
 
     const db = await getDb();
-    const [product] = await db.insert(products).values({ sku, name, category: String(body.category ?? "Mercearia"), unit: String(body.unit ?? "un"), costPrice: Number(body.costPrice) || 0, salePrice: Number(body.salePrice) || 0, currentStock: Number(body.currentStock) || 0, minimumStock: Number(body.minimumStock) || 0, supplierId: body.supplierId ? Number(body.supplierId) : null }).returning();
+    const [product] = await db.insert(products).values({ sku, name, category: String(body.category ?? "Mercearia"), unit: String(body.unit ?? "un"), costPrice: Number(body.costPrice) || 0, salePrice: Number(body.salePrice) || 0, currentStock: Number(body.currentStock) || 0, minimumStock: body.minimumStock === undefined ? 5 : Number(body.minimumStock) || 5, supplierId: body.supplierId ? Number(body.supplierId) : null }).returning();
     if (product.currentStock > 0) await db.insert(movements).values({ productId: product.id, type: "entrada", quantity: product.currentStock, previousStock: 0, resultingStock: product.currentStock, unitCost: product.costPrice, reason: "Estoque inicial" });
     return Response.json({ product }, { status: 201 });
   } catch {

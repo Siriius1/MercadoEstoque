@@ -174,6 +174,22 @@ function DeleteConfirmModal({target,onClose,onConfirm}:{target:DeleteTarget;onCl
   </Modal>;
 }
 function FormActions({onClose}:{onClose:()=>void}) { return <div className="form-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Salvar cadastro</button></div>; }
+function inferProductCategory(productName:string) {
+  const name=productName.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const categories:[string,string[]][]=[
+    ["Hortifrúti",["banana","manga","maca","laranja","limao","uva","mamao","abacaxi","tomate","batata","cebola","cenoura","alface","verdura","legume","fruta"]],
+    ["Laticínios",["leite","queijo","iogurte","danone","manteiga","requeijao","creme de leite"]],
+    ["Grãos",["arroz","feijao","cafe","lentilha","grao de bico","aveia","milho","farinha"]],
+    ["Bebidas",["agua","refrigerante","suco","cerveja","vinho","energetico","cha","licor"]],
+    ["Carnes",["carne","frango","peixe","linguica","bacon","presunto","hamburguer"]],
+    ["Padaria",["pao","bolo","torrada","biscoito","rosca"]],
+    ["Limpeza",["detergente","sabao","desinfetante","agua sanitaria","amaciante","esponja","limpador"]],
+    ["Higiene",["sabonete","shampoo","condicionador","creme dental","papel higienico","desodorante"]],
+    ["Doces",["chocolate","bala","bombom","doce","pirulito","sorvete"]],
+    ["Congelados",["congelado","pizza","lasanha","nugget"]],
+  ];
+  return categories.find(([,keywords])=>keywords.some(keyword=>name.includes(keyword)))?.[0]||"Mercearia";
+}
 function ProductModal({
   item,
   suppliers,
@@ -187,6 +203,8 @@ function ProductModal({
 }) {
   const [error, setError] = useState("");
   const [priceEditable, setPriceEditable] = useState(!item);
+  const [productName, setProductName] = useState(item?.name || "");
+  const [category, setCategory] = useState(item?.category || "Mercearia");
   return (
     <Modal
       title={item ? "Editar produto" : "Novo produto"}
@@ -206,7 +224,15 @@ function ProductModal({
         <div className="form-grid">
           <label className="span-2">
             Nome do produto
-            <input name="name" required defaultValue={item?.name} />
+            <input
+              name="name"
+              required
+              value={productName}
+              onChange={(event) => {
+                setProductName(event.target.value);
+                setCategory(inferProductCategory(event.target.value));
+              }}
+            />
           </label>
           {item ? (
             <label>
@@ -232,8 +258,10 @@ function ProductModal({
             Categoria
             <input
               name="category"
-              defaultValue={item?.category || "Mercearia"}
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
             />
+            <small className="category-auto-hint">Preenchida automaticamente pelo nome; ajuste se necessário.</small>
           </label>
           <label>
             Unidade
@@ -316,16 +344,6 @@ function ProductModal({
               />
             </label>
           )}
-          <label>
-            Estoque mínimo
-            <input
-              name="minimumStock"
-              type="number"
-              min="0"
-              step="0.001"
-              defaultValue={item?.minimumStock || 0}
-            />
-          </label>
         </div>
         {error && <p className="form-error">{error}</p>}
         <FormActions onClose={onClose} />

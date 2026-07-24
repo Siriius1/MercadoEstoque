@@ -35,6 +35,7 @@ def initialize_database() -> None:
         connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ"))
         connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_name VARCHAR(180)"))
         connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_email VARCHAR(180)"))
+        connection.execute(text("ALTER TABLE products ALTER COLUMN minimum_stock SET DEFAULT 5"))
 
 
 @asynccontextmanager

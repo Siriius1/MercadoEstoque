@@ -12,7 +12,7 @@ class ProductInput(BaseModel):
     costPrice: Decimal = Field(default=0, ge=0)
     salePrice: Decimal = Field(default=0, ge=0)
     currentStock: Decimal = Field(default=0, ge=0)
-    minimumStock: Decimal = Field(default=0, ge=0)
+    minimumStock: Decimal = Field(default=5, ge=0)
     supplierId: int | None = None
 
     @field_validator("barcode", mode="before")

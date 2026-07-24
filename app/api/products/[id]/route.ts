@@ -23,7 +23,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     costPrice: Number(body.costPrice) || 0,
     salePrice,
     salePriceUpdatedAt: salePrice !== existing.salePrice ? now : existing.salePriceUpdatedAt,
-    minimumStock: Number(body.minimumStock) || 0,
+    minimumStock: body.minimumStock === undefined ? 5 : Number(body.minimumStock) || 5,
     supplierId: body.supplierId ? Number(body.supplierId) : null,
     active: body.active !== false,
     updatedAt: now,
