@@ -98,6 +98,10 @@ def list_products(
 
 @app.post("/api/products", status_code=201)
 def create_product(payload: ProductInput, db: Session = Depends(get_db)) -> dict:
+    if payload.supplierId is None:
+        raise HTTPException(422, "Selecione um fornecedor.")
+    if payload.currentStock <= 0:
+        raise HTTPException(422, "Informe um estoque inicial maior que zero.")
     validate_supplier(db, payload.supplierId)
     try:
         sequence_value = db.scalar(select(func.nextval("product_sku_seq")))
@@ -140,6 +144,8 @@ def create_product(payload: ProductInput, db: Session = Depends(get_db)) -> dict
 
 @app.put("/api/products/{product_id}")
 def update_product(product_id: int, payload: ProductInput, db: Session = Depends(get_db)) -> dict:
+    if payload.supplierId is None:
+        raise HTTPException(422, "Selecione um fornecedor.")
     validate_supplier(db, payload.supplierId)
     product = find_product(db, product_id, lock=True)
     sale_price_changed = Decimal(product.sale_price) != payload.salePrice

@@ -9,8 +9,8 @@ class ProductInput(BaseModel):
     barcode: str | None = Field(default=None, max_length=64)
     category: str = Field(default="Mercearia", max_length=100)
     unit: str = Field(default="un", max_length=12)
-    costPrice: Decimal = Field(default=0, ge=0)
-    salePrice: Decimal = Field(default=0, ge=0)
+    costPrice: Decimal = Field(gt=0)
+    salePrice: Decimal = Field(gt=0)
     currentStock: Decimal = Field(default=0, ge=0)
     minimumStock: Decimal = Field(default=5, ge=0)
     supplierId: int | None = None

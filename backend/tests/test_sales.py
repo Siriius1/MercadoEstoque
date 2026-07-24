@@ -19,9 +19,35 @@ def reset_database() -> None:
         connection.execute(text("CREATE SEQUENCE product_sku_seq START WITH 1"))
 
 
+def create_supplier(client: TestClient) -> int:
+    response = client.post(
+        "/api/suppliers",
+        json={"name": "Fornecedor de teste"},
+    )
+    assert response.status_code == 201
+    return response.json()["supplier"]["id"]
+
+
+def test_product_requires_supplier_prices_and_initial_stock() -> None:
+    reset_database()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/products",
+            json={
+                "name": "Produto incompleto",
+                "costPrice": 0,
+                "salePrice": 0,
+                "currentStock": 0,
+                "supplierId": "",
+            },
+        )
+        assert response.status_code == 422
+
+
 def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
     reset_database()
     with TestClient(app) as client:
+        supplier_id = create_supplier(client)
         product_response = client.post(
             "/api/products",
             json={
@@ -32,7 +58,7 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
                 "costPrice": 4.5,
                 "salePrice": 10,
                 "currentStock": 3,
-                "supplierId": "",
+                "supplierId": supplier_id,
             },
         )
         assert product_response.status_code == 201
@@ -102,22 +128,27 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
 def test_one_insufficient_item_rolls_back_every_item() -> None:
     reset_database()
     with TestClient(app) as client:
+        supplier_id = create_supplier(client)
         first = client.post(
             "/api/products",
             json={
                 "name": "Produto com saldo",
+                "costPrice": 2,
                 "salePrice": 5,
                 "currentStock": 5,
                 "minimumStock": 1,
+                "supplierId": supplier_id,
             },
         ).json()["product"]
         second = client.post(
             "/api/products",
             json={
                 "name": "Produto sem saldo suficiente",
+                "costPrice": 3,
                 "salePrice": 7,
                 "currentStock": 1,
                 "minimumStock": 1,
+                "supplierId": supplier_id,
             },
         ).json()["product"]
 
@@ -144,13 +175,16 @@ def test_one_insufficient_item_rolls_back_every_item() -> None:
 def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
     reset_database()
     with TestClient(app) as client:
+        supplier_id = create_supplier(client)
         product = client.post(
             "/api/products",
             json={
                 "name": "Produto do caixa",
+                "costPrice": 2,
                 "salePrice": 5,
                 "currentStock": 10,
                 "minimumStock": 1,
+                "supplierId": supplier_id,
             },
         ).json()["product"]
         operator = {

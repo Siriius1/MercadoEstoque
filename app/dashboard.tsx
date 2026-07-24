@@ -275,8 +275,8 @@ function ProductModal({
           </label>
           <label>
             Fornecedor
-            <select name="supplierId" defaultValue={item?.supplierId || ""}>
-              <option value="">Não vinculado</option>
+            <select name="supplierId" required defaultValue={item?.supplierId || ""}>
+              <option value="" disabled>Selecione um fornecedor</option>
               {suppliers
                 .filter((s) => s.active)
                 .map((s) => (
@@ -291,9 +291,10 @@ function ProductModal({
             <input
               name="costPrice"
               type="number"
-              min="0"
+              min="0.01"
               step="0.01"
-              defaultValue={item?.costPrice || 0}
+              required
+              defaultValue={item?.costPrice || ""}
             />
           </label>
           <label className="price-field">
@@ -318,9 +319,10 @@ function ProductModal({
             <input
               name="salePrice"
               type="number"
-              min="0"
+              min="0.01"
               step="0.01"
-              defaultValue={item?.salePrice || 0}
+              required
+              defaultValue={item?.salePrice || ""}
               readOnly={!priceEditable}
               className={!priceEditable ? "protected-price" : ""}
             />
@@ -338,9 +340,10 @@ function ProductModal({
               <input
                 name="currentStock"
                 type="number"
-                min="0"
+                min="0.001"
                 step="0.001"
-                defaultValue="0"
+                required
+                defaultValue=""
               />
             </label>
           )}

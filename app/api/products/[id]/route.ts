@@ -13,18 +13,24 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const [existing] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
   if (!existing) return Response.json({ error: "Produto não encontrado." }, { status: 404 });
 
+  const supplierId = Number(body.supplierId);
+  const costPrice = Number(body.costPrice);
   const requestedSalePrice = Number(body.salePrice);
   const salePrice = Number.isFinite(requestedSalePrice) ? requestedSalePrice : existing.salePrice;
+  if (!String(body.name ?? "").trim()) return Response.json({ error: "Nome é obrigatório." }, { status: 400 });
+  if (!supplierId) return Response.json({ error: "Fornecedor é obrigatório." }, { status: 400 });
+  if (!(costPrice > 0)) return Response.json({ error: "Preço de compra deve ser maior que zero." }, { status: 400 });
+  if (!(salePrice > 0)) return Response.json({ error: "Preço de venda deve ser maior que zero." }, { status: 400 });
   const now = new Date().toISOString();
   const [product] = await db.update(products).set({
     name: String(body.name ?? "").trim(),
     category: String(body.category ?? "Mercearia"),
     unit: String(body.unit ?? "un"),
-    costPrice: Number(body.costPrice) || 0,
+    costPrice,
     salePrice,
     salePriceUpdatedAt: salePrice !== existing.salePrice ? now : existing.salePriceUpdatedAt,
     minimumStock: body.minimumStock === undefined ? 5 : Number(body.minimumStock) || 5,
-    supplierId: body.supplierId ? Number(body.supplierId) : null,
+    supplierId,
     active: body.active !== false,
     updatedAt: now,
   }).where(eq(products.id, productId)).returning();
