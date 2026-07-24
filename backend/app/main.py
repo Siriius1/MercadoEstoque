@@ -149,14 +149,30 @@ def update_product(product_id: int, payload: ProductInput, db: Session = Depends
     validate_supplier(db, payload.supplierId)
     product = find_product(db, product_id, lock=True)
     sale_price_changed = Decimal(product.sale_price) != payload.salePrice
+    previous_stock = Decimal(product.current_stock)
+    stock_changed = previous_stock != payload.currentStock
     product.name = payload.name.strip()
     product.barcode = payload.barcode
     product.category = payload.category.strip() or "Mercearia"
     product.unit = payload.unit
     product.cost_price = payload.costPrice
     product.sale_price = payload.salePrice
+    product.current_stock = payload.currentStock
     product.minimum_stock = payload.minimumStock
     product.supplier_id = payload.supplierId
+    if stock_changed:
+        db.add(
+            StockMovement(
+                product_id=product.id,
+                type="ajuste",
+                quantity=abs(payload.currentStock - previous_stock),
+                previous_stock=previous_stock,
+                resulting_stock=payload.currentStock,
+                unit_cost=payload.costPrice,
+                reason="Ajuste pela edição do produto",
+                notes="Saldo alterado no cadastro do produto.",
+            )
+        )
     if sale_price_changed:
         product.sale_price_updated_at = datetime.now(timezone.utc)
     try:

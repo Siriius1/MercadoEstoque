@@ -11,7 +11,7 @@ class ProductInput(BaseModel):
     unit: str = Field(default="un", max_length=12)
     costPrice: Decimal = Field(gt=0)
     salePrice: Decimal = Field(gt=0)
-    currentStock: Decimal = Field(default=0, ge=0)
+    currentStock: Decimal = Field(ge=0)
     minimumStock: Decimal = Field(default=5, ge=0)
     supplierId: int | None = None
 

@@ -124,6 +124,27 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
             == 404
         )
 
+        update_response = client.put(
+            f"/api/products/{product_id}",
+            json={
+                "name": "Produto de teste",
+                "barcode": "789000000001",
+                "category": "Teste",
+                "unit": "un",
+                "costPrice": 4.5,
+                "salePrice": 10,
+                "currentStock": 8,
+                "supplierId": supplier_id,
+            },
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["product"]["currentStock"] == 8
+        adjustment = client.get("/api/movements").json()["movements"][0]
+        assert adjustment["type"] == "ajuste"
+        assert adjustment["previousStock"] == 3
+        assert adjustment["resultingStock"] == 8
+        assert adjustment["reason"] == "Ajuste pela edição do produto"
+
 
 def test_one_insufficient_item_rolls_back_every_item() -> None:
     reset_database()

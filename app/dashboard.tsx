@@ -334,19 +334,18 @@ function ProductModal({
               </small>
             )}
           </label>
-          {!item && (
-            <label>
-              Estoque inicial
-              <input
-                name="currentStock"
-                type="number"
-                min="0.001"
-                step="0.001"
-                required
-                defaultValue=""
-              />
-            </label>
-          )}
+          <label>
+            {item ? "Estoque atual" : "Estoque inicial"}
+            <input
+              name="currentStock"
+              type="number"
+              min={item ? "0" : "0.001"}
+              step="0.001"
+              required
+              defaultValue={item?.currentStock ?? ""}
+            />
+            {item && <small className="category-auto-hint">Alterações ficam registradas em Movimentações.</small>}
+          </label>
         </div>
         {error && <p className="form-error">{error}</p>}
         <FormActions onClose={onClose} />
