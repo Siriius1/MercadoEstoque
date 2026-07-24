@@ -2,6 +2,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,12 +12,20 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import Product, Sale, SaleItem, StockMovement, Supplier
-from .schemas import CancelSaleInput, MovementInput, ProductInput, SaleInput, SupplierInput
+from .models import CashClosure, Product, Sale, SaleItem, StockMovement, Supplier
+from .schemas import (
+    CancelSaleInput,
+    CashClosureInput,
+    MovementInput,
+    ProductInput,
+    SaleInput,
+    SupplierInput,
+)
 from .serializers import movement_json, number, product_json, supplier_json
 
 
 CENT = Decimal("0.01")
+SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 
 
 def initialize_database() -> None:
@@ -224,7 +233,15 @@ def list_movements(db: Session = Depends(get_db)) -> dict:
         .order_by(StockMovement.created_at.desc(), StockMovement.id.desc())
         .limit(1000)
     ).unique().all()
-    return {"movements": [movement_json(movement) for movement in movements]}
+    closures = db.scalars(
+        select(CashClosure)
+        .order_by(CashClosure.created_at.desc(), CashClosure.id.desc())
+        .limit(500)
+    ).all()
+    combined = [movement_json(movement) for movement in movements]
+    combined.extend(cash_closure_json(closure, as_movement=True) for closure in closures)
+    combined.sort(key=lambda item: item["createdAt"], reverse=True)
+    return {"movements": combined}
 
 
 @app.post("/api/movements", status_code=201)
@@ -287,6 +304,10 @@ def create_sale(payload: SaleInput, db: Session = Depends(get_db)) -> dict:
         requested[line.productId] += line.quantity
 
     with db.begin():
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"cash-register:{payload.operatorEmail.strip().lower()}"},
+        )
         products = db.scalars(
             select(Product)
             .where(Product.id.in_(sorted(requested)))
@@ -383,6 +404,109 @@ def sale_json(sale: Sale) -> dict:
             for item in sale.items
         ],
     }
+
+
+def cash_period(db: Session, operator_email: str, period_end: datetime) -> tuple[datetime, Decimal, int]:
+    last_period_end = db.scalar(
+        select(CashClosure.period_end)
+        .where(func.lower(CashClosure.operator_email) == operator_email)
+        .order_by(CashClosure.period_end.desc(), CashClosure.id.desc())
+        .limit(1)
+    )
+    if last_period_end:
+        period_start = last_period_end
+    else:
+        local_now = period_end.astimezone(SAO_PAULO)
+        period_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    system_total, sale_count = db.execute(
+        select(func.coalesce(func.sum(Sale.total), 0), func.count(Sale.id)).where(
+            Sale.status == "completed",
+            Sale.payment_method == "dinheiro",
+            func.lower(Sale.operator_email) == operator_email,
+            Sale.created_at >= period_start,
+            Sale.created_at <= period_end,
+        )
+    ).one()
+    return period_start, Decimal(system_total).quantize(CENT), int(sale_count)
+
+
+def cash_closure_json(closure: CashClosure, as_movement: bool = False) -> dict:
+    result = {
+        "id": closure.id,
+        "operatorName": closure.operator_name,
+        "operatorEmail": closure.operator_email,
+        "periodStart": closure.period_start.isoformat(),
+        "periodEnd": closure.period_end.isoformat(),
+        "systemCashTotal": number(closure.system_cash_total),
+        "declaredCashTotal": number(closure.declared_cash_total),
+        "difference": number(closure.difference),
+        "cashSalesCount": closure.cash_sales_count,
+        "createdAt": closure.created_at.isoformat(),
+    }
+    if as_movement:
+        result.update(
+            {
+                "id": f"closure-{closure.id}",
+                "productId": 0,
+                "productName": "Fechamento de caixa",
+                "sku": "",
+                "unit": "",
+                "type": "fechamento",
+                "quantity": 0,
+                "previousStock": 0,
+                "resultingStock": 0,
+                "unitCost": 0,
+                "reason": f"Fechamento #{closure.id}",
+                "notes": (
+                    f"Sistema: R$ {closure.system_cash_total:.2f} · "
+                    f"Declarado: R$ {closure.declared_cash_total:.2f} · "
+                    f"Diferença: R$ {closure.difference:.2f}"
+                ),
+                "closureId": closure.id,
+                "saleId": None,
+            }
+        )
+    return result
+
+
+@app.get("/api/cash-closures/preview")
+def preview_cash_closure(operatorEmail: str, db: Session = Depends(get_db)) -> dict:
+    period_end = datetime.now(timezone.utc)
+    period_start, _, _ = cash_period(
+        db, operatorEmail.strip().lower(), period_end
+    )
+    return {
+        "preview": {
+            "periodStart": period_start.isoformat(),
+            "periodEnd": period_end.isoformat(),
+        }
+    }
+
+
+@app.post("/api/cash-closures", status_code=201)
+def create_cash_closure(payload: CashClosureInput, db: Session = Depends(get_db)) -> dict:
+    operator_email = payload.operatorEmail.strip().lower()
+    with db.begin():
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"cash-register:{operator_email}"},
+        )
+        period_end = datetime.now(timezone.utc)
+        period_start, system_total, sale_count = cash_period(db, operator_email, period_end)
+        declared_total = payload.declaredCashTotal.quantize(CENT, rounding=ROUND_HALF_UP)
+        closure = CashClosure(
+            operator_name=payload.operatorName.strip(),
+            operator_email=operator_email,
+            period_start=period_start,
+            period_end=period_end,
+            system_cash_total=system_total,
+            declared_cash_total=declared_total,
+            difference=(declared_total - system_total).quantize(CENT),
+            cash_sales_count=sale_count,
+        )
+        db.add(closure)
+        db.flush()
+    return {"closure": cash_closure_json(closure)}
 
 
 @app.get("/api/sales/latest")

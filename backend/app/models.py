@@ -104,6 +104,24 @@ class SaleItem(Base):
     sale: Mapped[Sale] = relationship(back_populates="items")
 
 
+class CashClosure(Base):
+    __tablename__ = "cash_closures"
+    __table_args__ = (
+        Index("cash_closures_operator_period_idx", "operator_email", "period_end"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    operator_name: Mapped[str] = mapped_column(String(180))
+    operator_email: Mapped[str] = mapped_column(String(180))
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    system_cash_total: Mapped[Decimal] = mapped_column(money_type)
+    declared_cash_total: Mapped[Decimal] = mapped_column(money_type)
+    difference: Mapped[Decimal] = mapped_column(money_type)
+    cash_sales_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class StockMovement(Base):
     __tablename__ = "stock_movements"
     __table_args__ = (

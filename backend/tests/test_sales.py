@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres@127.0.0.1:5433/mercado_estoque_test"
 
@@ -137,3 +138,78 @@ def test_one_insufficient_item_rolls_back_every_item() -> None:
         assert products[first["id"]]["currentStock"] == 5
         assert products[second["id"]]["currentStock"] == 1
         assert client.get("/api/sales").json()["sales"] == []
+
+
+def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
+    reset_database()
+    with TestClient(app) as client:
+        product = client.post(
+            "/api/products",
+            json={
+                "name": "Produto do caixa",
+                "salePrice": 5,
+                "currentStock": 10,
+                "minimumStock": 1,
+            },
+        ).json()["product"]
+        operator = {
+            "operatorName": "Operador Caixa",
+            "operatorEmail": "caixa@teste.com",
+        }
+        for payment_method in ("dinheiro", "pix"):
+            response = client.post(
+                "/api/sales",
+                json={
+                    "items": [{"productId": product["id"], "quantity": 2}],
+                    "paymentMethod": payment_method,
+                    **operator,
+                },
+            )
+            assert response.status_code == 201
+
+        preview = client.get(
+            "/api/cash-closures/preview",
+            params={"operatorEmail": operator["operatorEmail"]},
+        ).json()["preview"]
+        assert "systemCashTotal" not in preview
+        assert "cashSalesCount" not in preview
+
+        closure_response = client.post(
+            "/api/cash-closures",
+            json={**operator, "declaredCashTotal": 9},
+        )
+        assert closure_response.status_code == 201
+        closure = closure_response.json()["closure"]
+        assert closure["systemCashTotal"] == 10
+        assert closure["declaredCashTotal"] == 9
+        assert closure["difference"] == -1
+
+        movement = client.get("/api/movements").json()["movements"][0]
+        assert movement["type"] == "fechamento"
+        assert movement["systemCashTotal"] == 10
+        assert movement["declaredCashTotal"] == 9
+        assert movement["difference"] == -1
+
+        next_preview = client.get(
+            "/api/cash-closures/preview",
+            params={"operatorEmail": operator["operatorEmail"]},
+        ).json()["preview"]
+        assert datetime.fromisoformat(next_preview["periodStart"]) == datetime.fromisoformat(
+            closure["periodEnd"]
+        )
+
+        client.post(
+            "/api/sales",
+            json={
+                "items": [{"productId": product["id"], "quantity": 1}],
+                "paymentMethod": "dinheiro",
+                **operator,
+            },
+        )
+        second_closure = client.post(
+            "/api/cash-closures",
+            json={**operator, "declaredCashTotal": 5},
+        ).json()["closure"]
+        assert second_closure["systemCashTotal"] == 5
+        assert second_closure["cashSalesCount"] == 1
+        assert second_closure["difference"] == 0

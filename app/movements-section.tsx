@@ -15,16 +15,26 @@ type Movement = {
   notes: string;
   saleId?: number | null;
   operatorName?: string;
+  closureId?: number;
+  periodStart?: string;
+  periodEnd?: string;
+  systemCashTotal?: number;
+  declaredCashTotal?: number;
+  difference?: number;
+  cashSalesCount?: number;
   createdAt: string;
 };
 
 type MovementRow =
   | { kind: "sale"; key: string; saleId: number; movements: Movement[] }
   | { kind: "cancellation"; key: string; saleId: number; movements: Movement[] }
+  | { kind: "closure"; key: string; movement: Movement }
   | { kind: "movement"; key: string; movement: Movement };
 
 const dateTime = (value: string) =>
   new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+const money = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 export default function MovementsSection({
   movements,
@@ -41,7 +51,9 @@ export default function MovementsSection({
   const groupedCancellations = new Map<number, Movement[]>();
   const rows: MovementRow[] = [];
   for (const movement of movements) {
-    if (movement.saleId) {
+    if (movement.type === "fechamento") {
+      rows.push({ kind: "closure", key: `closure-${movement.closureId}`, movement });
+    } else if (movement.saleId) {
       const target = movement.reason.startsWith("Cancelamento da venda")
         ? groupedCancellations
         : groupedSales;
@@ -64,8 +76,8 @@ export default function MovementsSection({
     });
   }
   rows.sort((a, b) => {
-    const aDate = a.kind === "movement" ? a.movement.createdAt : a.movements[0].createdAt;
-    const bDate = b.kind === "movement" ? b.movement.createdAt : b.movements[0].createdAt;
+    const aDate = a.kind === "sale" || a.kind === "cancellation" ? a.movements[0].createdAt : a.movement.createdAt;
+    const bDate = b.kind === "sale" || b.kind === "cancellation" ? b.movements[0].createdAt : b.movement.createdAt;
     return new Date(bDate).getTime() - new Date(aDate).getTime();
   });
 
@@ -84,6 +96,21 @@ export default function MovementsSection({
           <thead><tr><th>Data</th><th>Operação / produto</th><th>Tipo</th><th>Itens / quantidade</th><th>Estoque anterior</th><th>Estoque final</th><th>Detalhes</th></tr></thead>
           <tbody>
             {rows.map((row) => {
+              if (row.kind === "closure") {
+                const closure = row.movement;
+                const difference = closure.difference || 0;
+                return (
+                  <tr className="cash-closure-row" key={row.key}>
+                    <td>{dateTime(closure.createdAt)}</td>
+                    <td><div className="sale-operation cash-closure"><span>R$</span><div><strong>Fechamento de caixa #{closure.closureId}</strong><small>Operador: {closure.operatorName || "Não informado"}</small></div></div></td>
+                    <td><span className="movement-tag fechamento">fechamento</span></td>
+                    <td><div className="closure-count"><strong>{closure.cashSalesCount || 0}</strong><small>vendas em dinheiro</small></div></td>
+                    <td><div className="closure-value"><small>Valor no sistema</small><strong>{money(closure.systemCashTotal || 0)}</strong></div></td>
+                    <td><div className="closure-value"><small>Valor informado</small><strong>{money(closure.declaredCashTotal || 0)}</strong></div></td>
+                    <td><div className={`closure-difference ${difference === 0 ? "balanced" : "unbalanced"}`}><small>Diferença</small><strong>{money(difference)}</strong></div></td>
+                  </tr>
+                );
+              }
               if (row.kind === "cancellation") {
                 const first = row.movements[0];
                 const refundMatch = first.notes.match(/Estorno:\s*R\$\s*([\d.,]+)/i);
