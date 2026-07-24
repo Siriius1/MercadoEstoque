@@ -20,6 +20,7 @@ type Movement = {
 
 type MovementRow =
   | { kind: "sale"; key: string; saleId: number; movements: Movement[] }
+  | { kind: "cancellation"; key: string; saleId: number; movements: Movement[] }
   | { kind: "movement"; key: string; movement: Movement };
 
 const dateTime = (value: string) =>
@@ -37,12 +38,16 @@ export default function MovementsSection({
   onNew: () => void;
 }) {
   const groupedSales = new Map<number, Movement[]>();
+  const groupedCancellations = new Map<number, Movement[]>();
   const rows: MovementRow[] = [];
   for (const movement of movements) {
     if (movement.saleId) {
-      const group = groupedSales.get(movement.saleId);
+      const target = movement.reason.startsWith("Cancelamento da venda")
+        ? groupedCancellations
+        : groupedSales;
+      const group = target.get(movement.saleId);
       if (group) group.push(movement);
-      else groupedSales.set(movement.saleId, [movement]);
+      else target.set(movement.saleId, [movement]);
     } else {
       rows.push({ kind: "movement", key: `movement-${movement.id}`, movement });
     }
@@ -50,9 +55,17 @@ export default function MovementsSection({
   for (const [saleId, saleMovements] of groupedSales) {
     rows.push({ kind: "sale", key: `sale-${saleId}`, saleId, movements: saleMovements });
   }
+  for (const [saleId, cancellationMovements] of groupedCancellations) {
+    rows.push({
+      kind: "cancellation",
+      key: `cancellation-${saleId}`,
+      saleId,
+      movements: cancellationMovements,
+    });
+  }
   rows.sort((a, b) => {
-    const aDate = a.kind === "sale" ? a.movements[0].createdAt : a.movement.createdAt;
-    const bDate = b.kind === "sale" ? b.movements[0].createdAt : b.movement.createdAt;
+    const aDate = a.kind === "movement" ? a.movement.createdAt : a.movements[0].createdAt;
+    const bDate = b.kind === "movement" ? b.movement.createdAt : b.movements[0].createdAt;
     return new Date(bDate).getTime() - new Date(aDate).getTime();
   });
 
@@ -71,6 +84,21 @@ export default function MovementsSection({
           <thead><tr><th>Data</th><th>Operação / produto</th><th>Tipo</th><th>Itens / quantidade</th><th>Estoque anterior</th><th>Estoque final</th><th>Detalhes</th></tr></thead>
           <tbody>
             {rows.map((row) => {
+              if (row.kind === "cancellation") {
+                const first = row.movements[0];
+                const refundMatch = first.notes.match(/Estorno:\s*R\$\s*([\d.,]+)/i);
+                return (
+                  <tr className="cancellation-movement-row" key={row.key}>
+                    <td>{dateTime(first.createdAt)}</td>
+                    <td><div className="sale-operation cancellation"><span>↩</span><div><strong>Cancelamento da venda #{row.saleId}</strong><small>{first.operatorName ? `Operador: ${first.operatorName}` : "Estorno no caixa"}</small></div></div></td>
+                    <td><span className="movement-tag entrada">estorno</span></td>
+                    <td><div className="sale-items-list">{row.movements.map((movement) => <span key={movement.id}><b>+{movement.quantity} {movement.unit}</b> {movement.productName}</span>)}</div></td>
+                    <td>—</td>
+                    <td>Devolvido</td>
+                    <td><div className="sale-detail cancellation"><strong>{refundMatch ? `R$ ${refundMatch[1]}` : "Valor estornado"}</strong><small>Venda cancelada</small></div></td>
+                  </tr>
+                );
+              }
               if (row.kind === "sale") {
                 const first = row.movements[0];
                 const totalMatch = first.notes.match(/Total da compra:\s*R\$\s*([\d.,]+)/i);

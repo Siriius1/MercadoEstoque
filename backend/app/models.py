@@ -81,6 +81,9 @@ class Sale(Base):
     operator_name: Mapped[str] = mapped_column(String(180))
     operator_email: Mapped[str] = mapped_column(String(180))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    cancelled_by_email: Mapped[str | None] = mapped_column(String(180), nullable=True)
 
     items: Mapped[list["SaleItem"]] = relationship(back_populates="sale", cascade="all, delete-orphan")
 

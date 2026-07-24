@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from .config import get_settings
 from .database import Base, engine, get_db
 from .models import Product, Sale, SaleItem, StockMovement, Supplier
-from .schemas import MovementInput, ProductInput, SaleInput, SupplierInput
+from .schemas import CancelSaleInput, MovementInput, ProductInput, SaleInput, SupplierInput
 from .serializers import movement_json, number, product_json, supplier_json
 
 
@@ -23,6 +23,9 @@ def initialize_database() -> None:
     Base.metadata.create_all(engine)
     with engine.begin() as connection:
         connection.execute(text("CREATE SEQUENCE IF NOT EXISTS product_sku_seq START WITH 1"))
+        connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_name VARCHAR(180)"))
+        connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_email VARCHAR(180)"))
 
 
 @asynccontextmanager
@@ -353,27 +356,105 @@ def create_sale(payload: SaleInput, db: Session = Depends(get_db)) -> dict:
             product.current_stock = resulting
 
     return {
-        "sale": {
-            "id": sale.id,
-            "status": sale.status,
-            "paymentMethod": sale.payment_method,
-            "total": number(sale.total),
-            "operatorName": sale.operator_name,
-            "createdAt": sale.created_at.isoformat(),
-            "items": [
-                {
-                    "productId": item.product_id,
-                    "productName": item.product_name,
-                    "sku": item.product_sku,
-                    "unit": item.unit,
-                    "quantity": number(item.quantity),
-                    "unitPrice": number(item.unit_price),
-                    "subtotal": number(item.subtotal),
-                }
-                for item in sale.items
-            ],
-        }
+        "sale": sale_json(sale)
     }
+
+
+def sale_json(sale: Sale) -> dict:
+    return {
+        "id": sale.id,
+        "status": sale.status,
+        "paymentMethod": sale.payment_method,
+        "total": number(sale.total),
+        "operatorName": sale.operator_name,
+        "operatorEmail": sale.operator_email,
+        "createdAt": sale.created_at.isoformat(),
+        "cancelledAt": sale.cancelled_at.isoformat() if sale.cancelled_at else None,
+        "items": [
+            {
+                "productId": item.product_id,
+                "productName": item.product_name,
+                "sku": item.product_sku,
+                "unit": item.unit,
+                "quantity": number(item.quantity),
+                "unitPrice": number(item.unit_price),
+                "subtotal": number(item.subtotal),
+            }
+            for item in sale.items
+        ],
+    }
+
+
+@app.get("/api/sales/latest")
+def latest_completed_sale(operatorEmail: str, db: Session = Depends(get_db)) -> dict:
+    sale = db.scalar(
+        select(Sale)
+        .options(joinedload(Sale.items))
+        .where(
+            Sale.status == "completed",
+            func.lower(Sale.operator_email) == operatorEmail.strip().lower(),
+        )
+        .order_by(Sale.created_at.desc(), Sale.id.desc())
+        .limit(1)
+    )
+    if not sale:
+        raise HTTPException(404, "Nenhuma venda concluída deste operador para cancelar.")
+    return {"sale": sale_json(sale)}
+
+
+@app.post("/api/sales/{sale_id}/cancel")
+def cancel_sale(sale_id: int, payload: CancelSaleInput, db: Session = Depends(get_db)) -> dict:
+    with db.begin():
+        sale = db.scalar(select(Sale).where(Sale.id == sale_id).with_for_update())
+        if not sale:
+            raise HTTPException(404, "Venda não encontrada.")
+        if sale.status != "completed":
+            raise HTTPException(409, "Esta venda já foi cancelada.")
+        if sale.operator_email.lower() != payload.operatorEmail.strip().lower():
+            raise HTTPException(403, "Somente o operador que realizou a venda pode cancelá-la.")
+
+        items = db.scalars(
+            select(SaleItem).where(SaleItem.sale_id == sale.id).order_by(SaleItem.product_id)
+        ).all()
+        product_ids = sorted({item.product_id for item in items if item.product_id is not None})
+        products = db.scalars(
+            select(Product).where(Product.id.in_(product_ids)).order_by(Product.id).with_for_update()
+        ).all()
+        by_id = {product.id: product for product in products}
+        missing_items = [item.product_name for item in items if item.product_id not in by_id]
+        if missing_items:
+            raise HTTPException(
+                409,
+                f"Não é possível devolver ao estoque porque o produto {missing_items[0]} foi excluído.",
+            )
+
+        for item in items:
+            product = by_id[item.product_id]
+            previous = Decimal(product.current_stock)
+            resulting = previous + item.quantity
+            product.current_stock = resulting
+            db.add(
+                StockMovement(
+                    product_id=product.id,
+                    sale_id=sale.id,
+                    type="entrada",
+                    quantity=item.quantity,
+                    previous_stock=previous,
+                    resulting_stock=resulting,
+                    unit_cost=product.cost_price,
+                    reason=f"Cancelamento da venda #{sale.id}",
+                    notes=f"Estorno: R$ {sale.total:.2f} · Itens devolvidos ao estoque",
+                    operator_name=payload.operatorName.strip(),
+                )
+            )
+
+        sale.status = "cancelled"
+        sale.cancelled_at = datetime.now(timezone.utc)
+        sale.cancelled_by_name = payload.operatorName.strip()
+        sale.cancelled_by_email = payload.operatorEmail.strip().lower()
+
+    sale = db.scalar(select(Sale).options(joinedload(Sale.items)).where(Sale.id == sale_id))
+    return {"sale": sale_json(sale), "restoredItems": len(items)}
 
 
 @app.get("/api/sales")
@@ -383,27 +464,7 @@ def list_sales(db: Session = Depends(get_db)) -> dict:
     ).unique().all()
     return {
         "sales": [
-            {
-                "id": sale.id,
-                "status": sale.status,
-                "paymentMethod": sale.payment_method,
-                "total": number(sale.total),
-                "operatorName": sale.operator_name,
-                "operatorEmail": sale.operator_email,
-                "createdAt": sale.created_at.isoformat(),
-                "itemCount": sum(number(item.quantity) for item in sale.items),
-                "items": [
-                    {
-                        "productName": item.product_name,
-                        "sku": item.product_sku,
-                        "quantity": number(item.quantity),
-                        "unit": item.unit,
-                        "unitPrice": number(item.unit_price),
-                        "subtotal": number(item.subtotal),
-                    }
-                    for item in sale.items
-                ],
-            }
+            {**sale_json(sale), "itemCount": sum(number(item.quantity) for item in sale.items)}
             for sale in sales
         ]
     }

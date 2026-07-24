@@ -72,6 +72,30 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
         assert client.get("/api/products").json()["products"][0]["currentStock"] == 1
         assert len(client.get("/api/sales").json()["sales"]) == 1
 
+        cancellation = client.post(
+            f"/api/sales/{sale['id']}/cancel",
+            json={
+                "operatorName": "Operador Teste",
+                "operatorEmail": "operador@teste.com",
+            },
+        )
+        assert cancellation.status_code == 200
+        cancelled_sale = cancellation.json()["sale"]
+        assert cancelled_sale["status"] == "cancelled"
+        assert cancelled_sale["total"] == 20
+        assert client.get("/api/products").json()["products"][0]["currentStock"] == 3
+        movements = client.get("/api/movements").json()["movements"]
+        assert movements[0]["reason"] == f"Cancelamento da venda #{sale['id']}"
+        assert movements[0]["previousStock"] == 1
+        assert movements[0]["resultingStock"] == 3
+        assert (
+            client.get(
+                "/api/sales/latest",
+                params={"operatorEmail": "operador@teste.com"},
+            ).status_code
+            == 404
+        )
+
 
 def test_one_insufficient_item_rolls_back_every_item() -> None:
     reset_database()

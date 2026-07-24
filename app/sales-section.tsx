@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type SalesProduct = {
   id: number;
@@ -16,6 +16,13 @@ export type SalesProduct = {
 
 type CartLine = { product: SalesProduct; quantity: number };
 type PaymentMethod = "dinheiro" | "cartao" | "pix";
+type LastSale = {
+  id: number;
+  total: number;
+  paymentMethod: PaymentMethod;
+  createdAt: string;
+  items: Array<{ productName: string; quantity: number; unit: string; subtotal: number }>;
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_MERCADO_API_URL || "";
 const money = (value: number) =>
@@ -35,6 +42,7 @@ export default function SalesSection({
   const [cart, setCart] = useState<Record<number, CartLine>>({});
   const [payment, setPayment] = useState<PaymentMethod | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelSale, setCancelSale] = useState<LastSale | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -55,6 +63,17 @@ export default function SalesSection({
   const lines = Object.values(cart);
   const totalUnits = lines.reduce((total, line) => total + line.quantity, 0);
   const total = lines.reduce((sum, line) => sum + line.product.salePrice * line.quantity, 0);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key === "F2") {
+        event.preventDefault();
+        if (!payment && !submitting) void requestCancellation();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  });
 
   function addProduct(product: SalesProduct, quantity = addQuantity) {
     setError("");
@@ -123,6 +142,47 @@ export default function SalesSection({
     }
   }
 
+  async function requestCancellation() {
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/sales/latest?operatorEmail=${encodeURIComponent(user.email)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "Nenhuma venda disponível para cancelamento.");
+      setCancelSale(result.sale);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível localizar a última venda.");
+    }
+  }
+
+  async function confirmCancellation() {
+    if (!cancelSale) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/sales/${cancelSale.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operatorName: user.name, operatorEmail: user.email }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "Não foi possível cancelar a venda.");
+      setCancelSale(null);
+      setSuccess(
+        `Venda #${result.sale.id} cancelada — ${money(result.sale.total)} estornados e estoque restaurado.`,
+      );
+      await onSaleCompleted();
+      searchRef.current?.focus();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível cancelar a venda.");
+      setCancelSale(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <section className="sales-page">
       <div className="sales-heading">
@@ -185,6 +245,10 @@ export default function SalesSection({
               <p>Somente produtos cadastrados e disponíveis no estoque aparecem aqui.</p>
             </div>
           )}
+          <button className="cancel-last-sale" type="button" onClick={requestCancellation}>
+            <kbd>F2</kbd>
+            <span><strong>Cancelar última venda</strong><small>Estorna o valor e devolve os itens ao estoque</small></span>
+          </button>
         </section>
 
         <aside className="cart-panel">
@@ -247,6 +311,30 @@ export default function SalesSection({
               <button className="cancel-payment" disabled={submitting} onClick={() => setPayment(null)}>Voltar</button>
               <button className="confirm-payment" disabled={submitting} onClick={finalizeSale}>
                 {submitting ? "Finalizando..." : "Confirmar venda"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {cancelSale && (
+        <div className="payment-backdrop">
+          <div className="payment-confirm cancellation-confirm">
+            <span className="payment-icon">↩</span>
+            <small>CANCELAR ÚLTIMA VENDA</small>
+            <h2>Venda #{cancelSale.id}</h2>
+            <strong>{money(cancelSale.total)}</strong>
+            <div className="cancel-sale-items">
+              {cancelSale.items.map((item, index) => (
+                <span key={`${item.productName}-${index}`}>
+                  <b>{item.quantity} {item.unit}</b> {item.productName}
+                </span>
+              ))}
+            </div>
+            <p>O valor será estornado, a venda ficará marcada como cancelada e todos os itens voltarão ao estoque.</p>
+            <div>
+              <button className="cancel-payment" disabled={submitting} onClick={() => setCancelSale(null)}>Voltar</button>
+              <button className="confirm-cancellation" disabled={submitting} onClick={confirmCancellation}>
+                {submitting ? "Cancelando..." : "Confirmar cancelamento"}
               </button>
             </div>
           </div>

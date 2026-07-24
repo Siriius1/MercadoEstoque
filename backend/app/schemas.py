@@ -49,3 +49,8 @@ class SaleInput(BaseModel):
     paymentMethod: Literal["dinheiro", "cartao", "pix"]
     operatorName: str = Field(min_length=1, max_length=180)
     operatorEmail: str = Field(min_length=3, max_length=180)
+
+
+class CancelSaleInput(BaseModel):
+    operatorName: str = Field(min_length=1, max_length=180)
+    operatorEmail: str = Field(min_length=3, max_length=180)
