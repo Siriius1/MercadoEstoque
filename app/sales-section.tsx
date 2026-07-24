@@ -189,7 +189,10 @@ export default function SalesSection({
 
         <aside className="cart-panel">
           <header>
-            <div><h2>{lines.length} {lines.length === 1 ? "item" : "itens"}</h2><small>Quantidade total: {totalUnits}</small></div>
+            <div className="cart-header-summary">
+              <span className="cart-header-icon" aria-hidden="true">🛒</span>
+              <div><h2>{lines.length} {lines.length === 1 ? "item" : "itens"}</h2><small>Quantidade total: {totalUnits}</small></div>
+            </div>
             {lines.length > 0 && <button onClick={() => setCart({})}>Limpar</button>}
           </header>
           <div className="cart-lines">
@@ -216,7 +219,7 @@ export default function SalesSection({
               </div>
             ))}
             {!lines.length && (
-              <div className="empty-cart"><span>▱</span><strong>Carrinho vazio</strong><p>Escolha um produto para começar.</p></div>
+              <div className="empty-cart"><span aria-hidden="true">🛒</span><strong>Carrinho vazio</strong><p>Escolha um produto para começar.</p></div>
             )}
           </div>
           <footer className="cart-footer">
