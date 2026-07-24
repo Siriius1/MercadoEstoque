@@ -92,6 +92,18 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 - `npm test`: build the starter and verify its rendered loading skeleton
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
+## Mercado+ local
+
+Para iniciar a versão local completa, dê dois cliques em
+`INICIAR-MERCADO.cmd`. O atalho inicia o PostgreSQL, a API Python e o site em
+`http://localhost:3000`.
+
+Para encerrar os serviços, use `PARAR-MERCADO.cmd`.
+
+O PostgreSQL local usa a porta `5433` e a API fica em
+`http://127.0.0.1:8000/docs`. Esses serviços não publicam alterações no site
+online.
+
 ## Learn More
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)

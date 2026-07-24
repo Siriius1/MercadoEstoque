@@ -2,18 +2,22 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { formatPhone, maskEmail, normalizeEmail } from "./validation";
+import SalesSection from "./sales-section";
+import SalesMovementsSection from "./movements-section";
 
-type Section = "painel" | "produtos" | "fornecedores" | "movimentacoes" | "relatorios";
-type Product = { id:number; sku:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; salePriceUpdatedAt:string|null; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
+type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "movimentacoes" | "relatorios";
+type Product = { id:number; sku:string; barcode:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; salePriceUpdatedAt:string|null; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
 type Supplier = { id:number; name:string; document:string; contact:string; email:string; phone:string; productCount:number; active:boolean };
-type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; createdAt:string };
+type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; saleId?:number|null; operatorName?:string; createdAt:string };
 type Summary = { totalProducts:number; lowStock:number; stockValue:number; retailValue:number; totalSuppliers:number };
 type DeleteTarget = { kind:"products"|"suppliers"; id:number; name:string; linkedCount:number };
 type ProductSortKey = "name"|"sku"|"supplier"|"cost"|"sale"|"stock"|"status";
 
 const money = (value = 0) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-const dateTime = (value:string) => new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(value.replace(" ", "T") + (value.includes("Z") ? "" : "Z")));
+const dateTime = (value:string) => { const normalized=value.replace(" ","T"); const hasTimezone=/Z$|[+-]\d{2}:\d{2}$/.test(normalized); return new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(hasTimezone?normalized:`${normalized}Z`)); };
 const initials = (name:string) => name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase();
+const API_BASE = process.env.NEXT_PUBLIC_MERCADO_API_URL || "";
+const apiUrl = (path:string) => `${API_BASE}${path}`;
 
 export default function Dashboard({user}:{user:{name:string;email:string;role:string}}) {
   const [section, setSection] = useState<Section>("painel");
@@ -32,7 +36,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
 
   const load = useCallback(async () => {
     try {
-      const [p, s, m, d] = await Promise.all([fetch("/api/products"), fetch("/api/suppliers"), fetch("/api/movements"), fetch("/api/dashboard")]);
+      const [p, s, m, d] = await Promise.all([fetch(apiUrl("/api/products")), fetch(apiUrl("/api/suppliers")), fetch(apiUrl("/api/movements")), fetch(apiUrl("/api/dashboard"))]);
       if (![p,s,m,d].every(response => response.ok)) throw new Error();
       const [pd,sd,md,dd] = await Promise.all([p.json(), s.json(), m.json(), d.json()]);
       setProducts(pd.products); setSuppliers(sd.suppliers); setMovements(md.movements); setSummary(dd.summary); setRecent(dd.recent);
@@ -43,9 +47,9 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(""), 4500); return () => clearTimeout(timer); } }, [notice]);
 
-  const filteredProducts = useMemo(() => products.filter(p => `${p.name} ${p.sku} ${p.category} ${p.supplierName}`.toLowerCase().includes(search.toLowerCase())), [products, search]);
+  const filteredProducts = useMemo(() => products.filter(p => `${p.name} ${p.sku} ${p.barcode} ${p.category} ${p.supplierName}`.toLowerCase().includes(search.toLowerCase())), [products, search]);
   const filteredSuppliers = useMemo(() => suppliers.filter(s => `${s.name} ${s.document} ${s.contact}`.toLowerCase().includes(search.toLowerCase())), [suppliers, search]);
-  const filteredMovements = useMemo(() => movements.filter(m => `${m.productName} ${m.sku} ${m.type} ${m.reason}`.toLowerCase().includes(search.toLowerCase())), [movements, search]);
+  const filteredMovements = useMemo(() => movements.filter(m => `${m.productName} ${m.sku} ${m.type} ${m.reason} ${m.notes} ${m.saleId||""} ${m.operatorName||""}`.toLowerCase().includes(search.toLowerCase())), [movements, search]);
   const lowProducts = products.filter(p => p.active && p.currentStock <= p.minimumStock);
 
   const openNew = (kind:"product"|"supplier"|"movement") => { setEditing(null); setModal(kind); };
@@ -53,7 +57,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   const closeModal = () => { setModal(null); setEditing(null); };
 
   async function submit(endpoint:string, data:Record<string, FormDataEntryValue>, method="POST") {
-    const response = await fetch(endpoint, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
+    const response = await fetch(apiUrl(endpoint), { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Não foi possível salvar.");
     closeModal(); setNotice("Salvo com sucesso."); await load();
@@ -68,7 +72,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   }
 
   async function executeDelete(target:DeleteTarget, hideSupplierWarning = false) {
-    const response = await fetch(`/api/${target.kind}/${target.id}`, { method:"DELETE" });
+    const response = await fetch(apiUrl(`/api/${target.kind}/${target.id}`), { method:"DELETE" });
     const result = await response.json();
     if (!response.ok) { setNotice(result.error || "Não foi possível excluir."); return; }
     if (hideSupplierWarning && target.kind === "suppliers") localStorage.setItem("mercado-hide-supplier-delete-warning", "true");
@@ -78,6 +82,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   }
 
   const nav = [
+    { id:"vendas", icon:"▤", label:"Vendas" },
     { id:"painel", icon:"▦", label:"Painel" }, { id:"produtos", icon:"◇", label:"Produtos" },
     { id:"fornecedores", icon:"♣", label:"Fornecedores" }, { id:"movimentacoes", icon:"⇄", label:"Movimentações" },
     { id:"relatorios", icon:"↗", label:"Relatórios" },
@@ -96,9 +101,10 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
         {notice && <div className="toast">{notice}</div>}
         {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
           {section === "painel" && <DashboardSection summary={summary} recent={recent} lowProducts={lowProducts} onNavigate={setSection} onMovement={() => openNew("movement")} />}
+          {section === "vendas" && <SalesSection products={products} user={user} onSaleCompleted={load} />}
           {section === "produtos" && <ProductsSection products={filteredProducts} search={search} setSearch={setSearch} onNew={() => openNew("product")} onEdit={p => openEdit("product", p)} onDelete={p => requestDelete({ kind:"products", id:p.id, name:p.name, linkedCount:0 })} />}
           {section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={s => requestDelete({ kind:"suppliers", id:s.id, name:s.name, linkedCount:s.productCount })} />}
-          {section === "movimentacoes" && <MovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
+          {section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
           {section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
         </>}
       </div>
@@ -163,10 +169,164 @@ function DeleteConfirmModal({target,onClose,onConfirm}:{target:DeleteTarget;onCl
   </Modal>;
 }
 function FormActions({onClose}:{onClose:()=>void}) { return <div className="form-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Salvar cadastro</button></div>; }
-function ProductModal({item,suppliers,onClose,onSubmit}:{item:Product|null;suppliers:Supplier[];onClose:()=>void;onSubmit:(e:FormEvent<HTMLFormElement>)=>Promise<void>}) {
-  const [error,setError]=useState("");
-  const [priceEditable,setPriceEditable]=useState(!item);
-  return <Modal title={item?"Editar produto":"Novo produto"} description="Preencha as informações do item do seu estoque." onClose={onClose}><form onSubmit={async e=>{e.preventDefault();try{await onSubmit(e)}catch(err){setError(err instanceof Error?err.message:"Erro ao salvar.")}}}><div className="form-grid"><label className="span-2">Nome do produto<input name="name" required defaultValue={item?.name}/></label>{item?<label>Código automático<input value={item.sku} readOnly className="readonly-code"/></label>:<div className="auto-code-field"><span>Código do produto</span><strong>Gerado automaticamente ao salvar</strong></div>}<label>Categoria<input name="category" defaultValue={item?.category||"Mercearia"}/></label><label>Unidade<select name="unit" defaultValue={item?.unit||"un"}><option>un</option><option>kg</option><option>pct</option><option>cx</option><option>lt</option></select></label><label>Fornecedor<select name="supplierId" defaultValue={item?.supplierId||""}><option value="">Não vinculado</option>{suppliers.filter(s=>s.active).map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select></label><label>Preço de custo<input name="costPrice" type="number" min="0" step="0.01" defaultValue={item?.costPrice||0}/></label><label className="price-field"><span className="price-label">Preço de venda{item&&<button type="button" className={priceEditable?"price-unlocked":"price-unlock"} aria-label={priceEditable?"Bloquear edição do preço":"Editar preço de venda"} title={priceEditable?"Bloquear edição":"Editar preço"} onClick={()=>setPriceEditable(value=>!value)}>{priceEditable?"🔒":"✎"}</button>}</span><input name="salePrice" type="number" min="0" step="0.01" defaultValue={item?.salePrice||0} readOnly={!priceEditable} className={!priceEditable?"protected-price":""}/>{item&&<small className="price-updated">{item.salePriceUpdatedAt?`Última alteração: ${dateTime(item.salePriceUpdatedAt)}`:"Última alteração não registrada"}</small>}</label>{!item&&<label>Estoque inicial<input name="currentStock" type="number" min="0" step="0.001" defaultValue="0"/></label>}<label>Estoque mínimo<input name="minimumStock" type="number" min="0" step="0.001" defaultValue={item?.minimumStock||0}/></label></div>{error&&<p className="form-error">{error}</p>}<FormActions onClose={onClose}/></form></Modal>;
+function ProductModal({
+  item,
+  suppliers,
+  onClose,
+  onSubmit,
+}: {
+  item: Product | null;
+  suppliers: Supplier[];
+  onClose: () => void;
+  onSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
+}) {
+  const [error, setError] = useState("");
+  const [priceEditable, setPriceEditable] = useState(!item);
+  return (
+    <Modal
+      title={item ? "Editar produto" : "Novo produto"}
+      description="Preencha as informações do item do seu estoque."
+      onClose={onClose}
+    >
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            await onSubmit(e);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Erro ao salvar.");
+          }
+        }}
+      >
+        <div className="form-grid">
+          <label className="span-2">
+            Nome do produto
+            <input name="name" required defaultValue={item?.name} />
+          </label>
+          {item ? (
+            <label>
+              Código automático
+              <input value={item.sku} readOnly className="readonly-code" />
+            </label>
+          ) : (
+            <div className="auto-code-field">
+              <span>Código do produto</span>
+              <strong>Gerado automaticamente ao salvar</strong>
+            </div>
+          )}
+          <label>
+            Código de barras
+            <input
+              name="barcode"
+              inputMode="numeric"
+              defaultValue={item?.barcode || ""}
+              placeholder="Ex.: 7891234567890"
+            />
+          </label>
+          <label>
+            Categoria
+            <input
+              name="category"
+              defaultValue={item?.category || "Mercearia"}
+            />
+          </label>
+          <label>
+            Unidade
+            <select name="unit" defaultValue={item?.unit || "un"}>
+              <option>un</option>
+              <option>kg</option>
+              <option>pct</option>
+              <option>cx</option>
+              <option>lt</option>
+            </select>
+          </label>
+          <label>
+            Fornecedor
+            <select name="supplierId" defaultValue={item?.supplierId || ""}>
+              <option value="">Não vinculado</option>
+              {suppliers
+                .filter((s) => s.active)
+                .map((s) => (
+                  <option value={s.id} key={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Preço de custo
+            <input
+              name="costPrice"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={item?.costPrice || 0}
+            />
+          </label>
+          <label className="price-field">
+            <span className="price-label">
+              Preço de venda
+              {item && (
+                <button
+                  type="button"
+                  className={priceEditable ? "price-unlocked" : "price-unlock"}
+                  aria-label={
+                    priceEditable
+                      ? "Bloquear edição do preço"
+                      : "Editar preço de venda"
+                  }
+                  title={priceEditable ? "Bloquear edição" : "Editar preço"}
+                  onClick={() => setPriceEditable((value) => !value)}
+                >
+                  {priceEditable ? "🔒" : "✎"}
+                </button>
+              )}
+            </span>
+            <input
+              name="salePrice"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={item?.salePrice || 0}
+              readOnly={!priceEditable}
+              className={!priceEditable ? "protected-price" : ""}
+            />
+            {item && (
+              <small className="price-updated">
+                {item.salePriceUpdatedAt
+                  ? `Última alteração: ${dateTime(item.salePriceUpdatedAt)}`
+                  : "Última alteração não registrada"}
+              </small>
+            )}
+          </label>
+          {!item && (
+            <label>
+              Estoque inicial
+              <input
+                name="currentStock"
+                type="number"
+                min="0"
+                step="0.001"
+                defaultValue="0"
+              />
+            </label>
+          )}
+          <label>
+            Estoque mínimo
+            <input
+              name="minimumStock"
+              type="number"
+              min="0"
+              step="0.001"
+              defaultValue={item?.minimumStock || 0}
+            />
+          </label>
+        </div>
+        {error && <p className="form-error">{error}</p>}
+        <FormActions onClose={onClose} />
+      </form>
+    </Modal>
+  );
 }
 function SupplierModal({item,onClose,onSubmit}:{item:Supplier|null;onClose:()=>void;onSubmit:(e:FormEvent<HTMLFormElement>)=>Promise<void>}) { const [error,setError]=useState(""); const [email,setEmail]=useState(item?.email||""); const [phone,setPhone]=useState(formatPhone(item?.phone||"")); return <Modal title={item?"Editar fornecedor":"Novo fornecedor"} description="Mantenha os dados comerciais do parceiro organizados." onClose={onClose}><form onSubmit={async e=>{e.preventDefault();try{await onSubmit(e)}catch(err){setError(err instanceof Error?err.message:"Erro ao salvar.")}}}><div className="form-grid"><label className="span-2">Nome / Razão social<input name="name" required defaultValue={item?.name}/></label><label>CPF ou CNPJ<input name="document" defaultValue={item?.document}/></label><label>Pessoa de contato<input name="contact" defaultValue={item?.contact}/></label><label>E-mail<input name="email" type="email" value={email} onChange={event=>setEmail(normalizeEmail(event.target.value))} placeholder="contato@fornecedor.com.br"/></label><label>Telefone<input name="phone" inputMode="numeric" value={phone} onChange={event=>setPhone(formatPhone(event.target.value))} placeholder="(00) 00000-0000" maxLength={15}/></label></div>{error&&<p className="form-error">{error}</p>}<FormActions onClose={onClose}/></form></Modal>; }
 function MovementModal({products,onClose,onSubmit}:{products:Product[];onClose:()=>void;onSubmit:(e:FormEvent<HTMLFormElement>)=>Promise<void>}) { const [type,setType]=useState("entrada"); const [selected,setSelected]=useState<Product|null>(products[0]||null); const [error,setError]=useState(""); return <Modal title="Registrar movimentação" description="Toda alteração fica salva no histórico do produto." onClose={onClose}><form onSubmit={async e=>{e.preventDefault();try{await onSubmit(e)}catch(err){setError(err instanceof Error?err.message:"Erro ao salvar.")}}}><div className="movement-choice"><label><input type="radio" name="type" value="entrada" checked={type==="entrada"} onChange={e=>setType(e.target.value)}/><span>↓</span> Entrada</label><label><input type="radio" name="type" value="saida" checked={type==="saida"} onChange={e=>setType(e.target.value)}/><span>↑</span> Saída</label><label><input type="radio" name="type" value="ajuste" checked={type==="ajuste"} onChange={e=>setType(e.target.value)}/><span>⇄</span> Ajuste</label></div><div className="form-grid"><label className="span-2">Produto<select name="productId" required onChange={e=>setSelected(products.find(p=>p.id===Number(e.target.value))||null)}>{products.map(p=><option value={p.id} key={p.id}>{p.sku} — {p.name} ({p.currentStock} {p.unit})</option>)}</select></label><label>{type==="ajuste"?"Novo saldo":"Quantidade"}<input name="quantity" required type="number" min="0" step="0.001"/></label><label>Custo unitário<input name="unitCost" type="number" min="0" step="0.01" defaultValue={selected?.costPrice||0}/></label><label className="span-2">Motivo<input name="reason" placeholder={type==="entrada"?"Ex.: compra do fornecedor":type==="saida"?"Ex.: perda, venda ou consumo":"Ex.: inventário físico"}/></label><label className="span-2">Observações<textarea name="notes" rows={2}/></label></div>{error&&<p className="form-error">{error}</p>}<FormActions onClose={onClose}/></form></Modal>; }
