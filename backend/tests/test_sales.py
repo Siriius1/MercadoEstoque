@@ -145,6 +145,21 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
         assert adjustment["resultingStock"] == 8
         assert adjustment["reason"] == "Ajuste pela edição do produto"
 
+        fractional_update = client.put(
+            f"/api/products/{product_id}",
+            json={
+                "name": "Produto de teste",
+                "barcode": "789000000001",
+                "category": "Teste",
+                "unit": "un",
+                "costPrice": 4.5,
+                "salePrice": 10,
+                "currentStock": 8.5,
+                "supplierId": supplier_id,
+            },
+        )
+        assert fractional_update.status_code == 422
+
 
 def test_one_insufficient_item_rolls_back_every_item() -> None:
     reset_database()

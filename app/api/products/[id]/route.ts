@@ -22,7 +22,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!supplierId) return Response.json({ error: "Fornecedor é obrigatório." }, { status: 400 });
   if (!(costPrice > 0)) return Response.json({ error: "Preço de compra deve ser maior que zero." }, { status: 400 });
   if (!(salePrice > 0)) return Response.json({ error: "Preço de venda deve ser maior que zero." }, { status: 400 });
-  if (!Number.isFinite(currentStock) || currentStock < 0) return Response.json({ error: "Estoque atual é obrigatório." }, { status: 400 });
+  if (!Number.isInteger(currentStock) || currentStock < 0) return Response.json({ error: "O estoque deve ser informado em unidades inteiras." }, { status: 400 });
   const now = new Date().toISOString();
   const [product] = await db.update(products).set({
     name: String(body.name ?? "").trim(),

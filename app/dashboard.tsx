@@ -339,8 +339,8 @@ function ProductModal({
             <input
               name="currentStock"
               type="number"
-              min={item ? "0" : "0.001"}
-              step="0.001"
+              min={item ? "0" : "1"}
+              step="1"
               required
               defaultValue={item?.currentStock ?? ""}
             />

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     if (!supplierId) return Response.json({ error: "Fornecedor é obrigatório." }, { status: 400 });
     if (!(costPrice > 0)) return Response.json({ error: "Preço de compra deve ser maior que zero." }, { status: 400 });
     if (!(salePrice > 0)) return Response.json({ error: "Preço de venda deve ser maior que zero." }, { status: 400 });
-    if (!(currentStock > 0)) return Response.json({ error: "Estoque inicial deve ser maior que zero." }, { status: 400 });
+    if (!Number.isInteger(currentStock) || currentStock <= 0) return Response.json({ error: "O estoque inicial deve ser informado em unidades inteiras." }, { status: 400 });
 
     const d1 = await getD1();
     const sequence = await d1.prepare("UPDATE product_sequence SET last_value = last_value + 1 WHERE id = 1 RETURNING last_value").first<{ last_value: number }>();
