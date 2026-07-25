@@ -4,8 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { formatPhone, maskEmail, normalizeEmail } from "./validation";
 import SalesSection from "./sales-section";
 import SalesMovementsSection from "./movements-section";
+import EmployeesSection from "./employees-section";
 
-type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "movimentacoes" | "relatorios";
+type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "funcionarios" | "movimentacoes" | "relatorios";
 type Product = { id:number; sku:string; barcode:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; salePriceUpdatedAt:string|null; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
 type Supplier = { id:number; name:string; document:string; contact:string; email:string; phone:string; productCount:number; active:boolean };
 type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; saleId?:number|null; operatorName?:string; createdAt:string };
@@ -89,7 +90,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   const nav = [
     { id:"vendas", icon:"▤", label:"Vendas" },
     { id:"painel", icon:"▦", label:"Painel" }, { id:"produtos", icon:"◇", label:"Produtos" },
-    { id:"fornecedores", icon:"♣", label:"Fornecedores" }, { id:"movimentacoes", icon:"⇄", label:"Movimentações" },
+    { id:"fornecedores", icon:"♣", label:"Fornecedores" }, { id:"funcionarios", icon:"♙", label:"Funcionários" }, { id:"movimentacoes", icon:"⇄", label:"Movimentações" },
     { id:"relatorios", icon:"↗", label:"Relatórios" },
   ] as const;
 
@@ -109,6 +110,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
           {section === "vendas" && <SalesSection products={products} user={user} onSaleCompleted={load} />}
           {section === "produtos" && <ProductsSection products={filteredProducts} search={search} setSearch={setSearch} onNew={() => openNew("product")} onEdit={p => openEdit("product", p)} onDelete={p => requestDelete({ kind:"products", id:p.id, name:p.name, linkedCount:0 })} />}
           {section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={s => requestDelete({ kind:"suppliers", id:s.id, name:s.name, linkedCount:s.productCount })} />}
+          {section === "funcionarios" && <EmployeesSection currentUser={user} />}
           {section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
           {section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
         </>}
