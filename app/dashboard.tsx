@@ -21,7 +21,8 @@ const API_BASE = process.env.NEXT_PUBLIC_MERCADO_API_URL || "";
 const apiUrl = (path:string) => `${API_BASE}${path}`;
 
 export default function Dashboard({user}:{user:{name:string;email:string;role:string}}) {
-  const [section, setSection] = useState<Section>("painel");
+  const isCashier = user.role === "cashier";
+  const [section, setSection] = useState<Section>(isCashier ? "vendas" : "painel");
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -37,13 +38,20 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
 
   const load = useCallback(async () => {
     try {
+      if (isCashier) {
+        const response = await fetch(apiUrl("/api/products"));
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        setProducts(data.products);
+        return;
+      }
       const [p, s, m, d] = await Promise.all([fetch(apiUrl("/api/products")), fetch(apiUrl("/api/suppliers")), fetch(apiUrl("/api/movements")), fetch(apiUrl("/api/dashboard"))]);
       if (![p,s,m,d].every(response => response.ok)) throw new Error();
       const [pd,sd,md,dd] = await Promise.all([p.json(), s.json(), m.json(), d.json()]);
       setProducts(pd.products); setSuppliers(sd.suppliers); setMovements(md.movements); setSummary(dd.summary); setRecent(dd.recent);
     } catch { setNotice("Não foi possível carregar o banco de dados."); }
     finally { setLoading(false); }
-  }, []);
+  }, [isCashier]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(""), 4500); return () => clearTimeout(timer); } }, [notice]);
@@ -87,12 +95,13 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
     await load();
   }
 
-  const nav = [
+  const adminNav = [
     { id:"vendas", icon:"▤", label:"Vendas" },
     { id:"painel", icon:"▦", label:"Painel" }, { id:"produtos", icon:"◇", label:"Produtos" },
     { id:"fornecedores", icon:"♣", label:"Fornecedores" }, { id:"funcionarios", icon:"♙", label:"Funcionários" }, { id:"movimentacoes", icon:"⇄", label:"Movimentações" },
     { id:"relatorios", icon:"↗", label:"Relatórios" },
   ] as const;
+  const nav = isCashier ? adminNav.filter(item => item.id === "vendas") : adminNav;
 
   return <div className="app-shell">
     {menuOpen && <button className="menu-overlay" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
@@ -102,24 +111,24 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
       <div className="sidebar-foot"><div className="avatar">{initials(user.name)}</div><div><strong>{user.name}</strong><small>{maskEmail(user.email)}</small></div><span className="online-dot" /></div>
     </aside>
     <main>
-      <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className="icon-button" aria-label="Notificações">●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}</button><button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
+      <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span>{!isCashier && <button className="icon-button" aria-label="Notificações">●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}</button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
       <div className="content">
         {notice && <div className="toast">{notice}</div>}
         {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
-          {section === "painel" && <DashboardSection summary={summary} recent={recent} lowProducts={lowProducts} onNavigate={setSection} onMovement={() => openNew("movement")} />}
+          {!isCashier && section === "painel" && <DashboardSection summary={summary} recent={recent} lowProducts={lowProducts} onNavigate={setSection} onMovement={() => openNew("movement")} />}
           {section === "vendas" && <SalesSection products={products} user={user} onSaleCompleted={load} />}
-          {section === "produtos" && <ProductsSection products={filteredProducts} search={search} setSearch={setSearch} onNew={() => openNew("product")} onEdit={p => openEdit("product", p)} onDelete={p => requestDelete({ kind:"products", id:p.id, name:p.name, linkedCount:0 })} />}
-          {section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={s => requestDelete({ kind:"suppliers", id:s.id, name:s.name, linkedCount:s.productCount })} />}
-          {section === "funcionarios" && <EmployeesSection currentUser={user} />}
-          {section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
-          {section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
+          {!isCashier && section === "produtos" && <ProductsSection products={filteredProducts} search={search} setSearch={setSearch} onNew={() => openNew("product")} onEdit={p => openEdit("product", p)} onDelete={p => requestDelete({ kind:"products", id:p.id, name:p.name, linkedCount:0 })} />}
+          {!isCashier && section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={s => requestDelete({ kind:"suppliers", id:s.id, name:s.name, linkedCount:s.productCount })} />}
+          {!isCashier && section === "funcionarios" && <EmployeesSection currentUser={user} />}
+          {!isCashier && section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
+          {!isCashier && section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
         </>}
       </div>
     </main>
-    {modal === "product" && <ProductModal item={editing as Product|null} suppliers={suppliers} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit(editing ? `/api/products/${editing.id}` : "/api/products", data, editing ? "PUT" : "POST"); }} />}
-    {modal === "supplier" && <SupplierModal item={editing as Supplier|null} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit(editing ? `/api/suppliers/${editing.id}` : "/api/suppliers", data, editing ? "PUT" : "POST"); }} />}
-    {modal === "movement" && <MovementModal products={products.filter(p=>p.active)} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit("/api/movements", data); }} />}
-    {pendingDelete && <DeleteConfirmModal target={pendingDelete} onClose={() => setPendingDelete(null)} onConfirm={executeDelete} />}
+    {!isCashier && modal === "product" && <ProductModal item={editing as Product|null} suppliers={suppliers} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit(editing ? `/api/products/${editing.id}` : "/api/products", data, editing ? "PUT" : "POST"); }} />}
+    {!isCashier && modal === "supplier" && <SupplierModal item={editing as Supplier|null} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit(editing ? `/api/suppliers/${editing.id}` : "/api/suppliers", data, editing ? "PUT" : "POST"); }} />}
+    {!isCashier && modal === "movement" && <MovementModal products={products.filter(p=>p.active)} onClose={closeModal} onSubmit={async (event) => { const data=Object.fromEntries(new FormData(event.currentTarget)); await submit("/api/movements", data); }} />}
+    {!isCashier && pendingDelete && <DeleteConfirmModal target={pendingDelete} onClose={() => setPendingDelete(null)} onConfirm={executeDelete} />}
   </div>;
 }
 
