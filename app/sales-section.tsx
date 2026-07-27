@@ -34,6 +34,10 @@ const money = (value: number) =>
 const dateTime = (value: string) =>
   new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 
+function CartIcon({ large = false }: { large?: boolean }) {
+  return <span className={`cart-symbol ${large ? "large" : ""}`} aria-hidden="true"><i /><b className="wheel-one" /><b className="wheel-two" /></span>;
+}
+
 export default function SalesSection({
   products,
   user,
@@ -53,24 +57,38 @@ export default function SalesSection({
   const [declaredCash, setDeclaredCash] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [activeCategory, setActiveCategory] = useState("Todos");
+  const [clock, setClock] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
   const available = useMemo(
     () => products.filter((product) => product.active && product.currentStock > 0),
     [products],
   );
+  const categories = useMemo(
+    () => ["Todos", ...Array.from(new Set(available.map((product) => product.category))).sort((a, b) => a.localeCompare(b, "pt-BR"))],
+    [available],
+  );
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("pt-BR");
-    if (!term) return available;
-    return available.filter((product) =>
-      `${product.name} ${product.sku} ${product.barcode} ${product.category}`
+    return available.filter((product) => {
+      const matchesCategory = activeCategory === "Todos" || product.category === activeCategory;
+      const matchesSearch = !term || `${product.name} ${product.sku} ${product.barcode} ${product.category}`
         .toLocaleLowerCase("pt-BR")
-        .includes(term),
-    );
-  }, [available, query]);
+        .includes(term);
+      return matchesCategory && matchesSearch;
+    });
+  }, [activeCategory, available, query]);
   const lines = Object.values(cart);
   const totalUnits = lines.reduce((total, line) => total + line.quantity, 0);
   const total = lines.reduce((sum, line) => sum + line.product.salePrice * line.quantity, 0);
+
+  useEffect(() => {
+    const updateClock = () => setClock(new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date()));
+    updateClock();
+    const clockTimer = window.setInterval(updateClock, 1000);
+    return () => window.clearInterval(clockTimer);
+  }, []);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -242,20 +260,22 @@ export default function SalesSection({
 
   return (
     <section className="sales-page">
-      <div className="sales-heading">
-        <div>
-          <small>FRENTE DE CAIXA</small>
-          <h1>Nova venda</h1>
-          <p>Pesquise pelo nome, código do produto ou código de barras.</p>
+      <div className="sales-register-bar">
+        <div className="register-title">
+          <span className="register-status"><i /> CAIXA ABERTO</span>
+          <div><small>FRENTE DE CAIXA</small><h1>Nova venda</h1></div>
         </div>
-        <span className="cashier-pill">Operador: <strong>{user.name}</strong></span>
+        <div className="register-meta">
+          <div><small>OPERADOR</small><strong>{user.name}</strong></div>
+          <div className="register-time"><small>HORÁRIO</small><strong>{clock || "--:--:--"}</strong></div>
+        </div>
       </div>
 
       <div className="pos-layout">
         <section className="catalog-panel">
           <div className="pos-search-row">
             <label className="pos-search">
-              <span>⌕</span>
+              <span className="search-symbol" aria-hidden="true" />
               <input
                 ref={searchRef}
                 autoFocus
@@ -267,8 +287,9 @@ export default function SalesSection({
                     handleSearchEnter();
                   }
                 }}
-                placeholder="Nome, #0001 ou código de barras"
+                placeholder="Pesquise por nome, código do produto ou código de barras"
               />
+              <kbd>ENTER</kbd>
             </label>
             <label className="quick-quantity">
               <span>Quant.</span>
@@ -281,17 +302,31 @@ export default function SalesSection({
               />
             </label>
           </div>
+          <div className="category-filter" aria-label="Filtrar produtos por categoria">
+            {categories.map((category) => (
+              <button
+                type="button"
+                key={category}
+                className={activeCategory === category ? "active" : ""}
+                aria-pressed={activeCategory === category}
+                onClick={() => setActiveCategory(category)}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
           <div className="catalog-title">
-            <div><strong>Produtos do estoque</strong><small>{filtered.length} disponíveis</small></div>
-            {query && <button onClick={() => setQuery("")}>Limpar busca</button>}
+            <div><strong>Produtos disponíveis</strong><small>{filtered.length} resultado(s) · clique para adicionar</small></div>
+            {(query || activeCategory !== "Todos") && <button onClick={() => { setQuery(""); setActiveCategory("Todos"); }}>Limpar filtros</button>}
           </div>
           <div className="shortcut-grid">
             {filtered.map((product) => (
-              <button className="product-shortcut" key={product.id} onClick={() => addProduct(product)}>
-                <span>{product.name}</span>
+              <button className={`product-shortcut ${cart[product.id] ? "in-cart" : ""}`} key={product.id} onClick={() => addProduct(product)}>
+                <div className="product-card-heading"><span>{product.name}</span><b>{product.category}</b></div>
                 <small>{product.sku}{product.barcode ? ` · ${product.barcode}` : ""}</small>
                 <strong>{money(product.salePrice)}</strong>
-                <em>{product.currentStock} {product.unit} em estoque</em>
+                <em><i /> {product.currentStock} {product.unit} disponíveis</em>
+                {cart[product.id] && <mark>{cart[product.id].quantity} no carrinho</mark>}
               </button>
             ))}
           </div>
@@ -317,10 +352,10 @@ export default function SalesSection({
         <aside className="cart-panel">
           <header>
             <div className="cart-header-summary">
-              <span className="cart-header-icon" aria-hidden="true">🛒</span>
-              <div><h2>{lines.length} {lines.length === 1 ? "item" : "itens"}</h2><small>Quantidade total: {totalUnits}</small></div>
+              <CartIcon />
+              <div><small>CARRINHO DA VENDA</small><h2>{lines.length} {lines.length === 1 ? "item" : "itens"} <b>· {totalUnits} un.</b></h2></div>
             </div>
-            {lines.length > 0 && <button onClick={() => setCart({})}>Limpar</button>}
+            {lines.length > 0 && <button onClick={() => setCart({})}>Limpar carrinho</button>}
           </header>
           <div className="cart-lines">
             {lines.map(({ product, quantity }) => (
@@ -346,17 +381,17 @@ export default function SalesSection({
               </div>
             ))}
             {!lines.length && (
-              <div className="empty-cart"><span aria-hidden="true">🛒</span><strong>Carrinho vazio</strong><p>Escolha um produto para começar.</p></div>
+              <div className="empty-cart"><CartIcon large /><strong>Seu carrinho está vazio</strong><p>Pesquise ou selecione um produto para iniciar a venda.</p></div>
             )}
           </div>
           <footer className="cart-footer">
             {(error || success) && <div className={error ? "pos-message error" : "pos-message success"}>{error || success}</div>}
-            <div className="sale-total"><span>Total</span><strong>{money(total)}</strong></div>
-            <p>Escolha a forma de pagamento para finalizar:</p>
+            <div className="sale-total"><span>Total da venda</span><strong>{money(total)}</strong></div>
+            <p>FORMA DE PAGAMENTO</p>
             <div className="payment-buttons">
-              <button disabled={!lines.length} onClick={() => setPayment("dinheiro")}><span>R$</span>DINHEIRO</button>
-              <button disabled={!lines.length} onClick={() => setPayment("cartao")}><span>▣</span>CARTÃO</button>
-              <button disabled={!lines.length} onClick={() => setPayment("pix")}><span>◆</span>PIX</button>
+              <button className="payment-cash" disabled={!lines.length} onClick={() => setPayment("dinheiro")}><span>R$</span><b>Dinheiro</b><small>Receber agora</small></button>
+              <button className="payment-card" disabled={!lines.length} onClick={() => setPayment("cartao")}><span>▣</span><b>Cartão</b><small>Débito ou crédito</small></button>
+              <button className="payment-pix" disabled={!lines.length} onClick={() => setPayment("pix")}><span>◆</span><b>PIX</b><small>Pagamento digital</small></button>
             </div>
           </footer>
         </aside>
