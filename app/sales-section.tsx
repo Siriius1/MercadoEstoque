@@ -57,7 +57,6 @@ export default function SalesSection({
   const [declaredCash, setDeclaredCash] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [activeCategory, setActiveCategory] = useState("Todos");
   const [clock, setClock] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -65,20 +64,15 @@ export default function SalesSection({
     () => products.filter((product) => product.active && product.currentStock > 0),
     [products],
   );
-  const categories = useMemo(
-    () => ["Todos", ...Array.from(new Set(available.map((product) => product.category))).sort((a, b) => a.localeCompare(b, "pt-BR"))],
-    [available],
-  );
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("pt-BR");
-    return available.filter((product) => {
-      const matchesCategory = activeCategory === "Todos" || product.category === activeCategory;
-      const matchesSearch = !term || `${product.name} ${product.sku} ${product.barcode} ${product.category}`
+    if (!term) return available;
+    return available.filter((product) =>
+      `${product.name} ${product.sku} ${product.barcode} ${product.category}`
         .toLocaleLowerCase("pt-BR")
-        .includes(term);
-      return matchesCategory && matchesSearch;
-    });
-  }, [activeCategory, available, query]);
+        .includes(term),
+    );
+  }, [available, query]);
   const lines = Object.values(cart);
   const totalUnits = lines.reduce((total, line) => total + line.quantity, 0);
   const total = lines.reduce((sum, line) => sum + line.product.salePrice * line.quantity, 0);
@@ -302,22 +296,9 @@ export default function SalesSection({
               />
             </label>
           </div>
-          <div className="category-filter" aria-label="Filtrar produtos por categoria">
-            {categories.map((category) => (
-              <button
-                type="button"
-                key={category}
-                className={activeCategory === category ? "active" : ""}
-                aria-pressed={activeCategory === category}
-                onClick={() => setActiveCategory(category)}
-              >
-                {category}
-              </button>
-            ))}
-          </div>
           <div className="catalog-title">
             <div><strong>Produtos disponíveis</strong><small>{filtered.length} resultado(s) · clique para adicionar</small></div>
-            {(query || activeCategory !== "Todos") && <button onClick={() => { setQuery(""); setActiveCategory("Todos"); }}>Limpar filtros</button>}
+            {query && <button onClick={() => setQuery("")}>Limpar busca</button>}
           </div>
           <div className="shortcut-grid">
             {filtered.map((product) => (
