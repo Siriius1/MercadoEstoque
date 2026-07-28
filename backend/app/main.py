@@ -35,6 +35,28 @@ def initialize_database() -> None:
         connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_name VARCHAR(180)"))
         connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_email VARCHAR(180)"))
         connection.execute(text("ALTER TABLE products ALTER COLUMN minimum_stock SET DEFAULT 5"))
+        connection.execute(
+            text(
+                "ALTER TABLE cash_closures "
+                "ADD COLUMN IF NOT EXISTS total_sales_count INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE cash_closures AS closure
+                SET total_sales_count = (
+                    SELECT COUNT(*)
+                    FROM sales AS sale
+                    WHERE sale.status = 'completed'
+                      AND lower(sale.operator_email) = lower(closure.operator_email)
+                      AND sale.created_at >= closure.period_start
+                      AND sale.created_at <= closure.period_end
+                )
+                WHERE closure.total_sales_count = 0
+                """
+            )
+        )
 
 
 @asynccontextmanager
@@ -490,8 +512,8 @@ def sale_json(sale: Sale) -> dict:
 
 def cash_period(
     db: Session, operator_email: str, period_start: datetime, period_end: datetime
-) -> tuple[Decimal, int]:
-    system_total, sale_count = db.execute(
+) -> tuple[Decimal, int, int]:
+    system_total, cash_sale_count = db.execute(
         select(func.coalesce(func.sum(Sale.total), 0), func.count(Sale.id)).where(
             Sale.status == "completed",
             Sale.payment_method == "dinheiro",
@@ -500,7 +522,19 @@ def cash_period(
             Sale.created_at <= period_end,
         )
     ).one()
-    return Decimal(system_total).quantize(CENT), int(sale_count)
+    total_sale_count = db.scalar(
+        select(func.count(Sale.id)).where(
+            Sale.status == "completed",
+            func.lower(Sale.operator_email) == operator_email,
+            Sale.created_at >= period_start,
+            Sale.created_at <= period_end,
+        )
+    )
+    return (
+        Decimal(system_total).quantize(CENT),
+        int(cash_sale_count),
+        int(total_sale_count or 0),
+    )
 
 
 def cash_closure_json(closure: CashClosure, as_movement: bool = False) -> dict:
@@ -514,6 +548,7 @@ def cash_closure_json(closure: CashClosure, as_movement: bool = False) -> dict:
         "declaredCashTotal": number(closure.declared_cash_total),
         "difference": number(closure.difference),
         "cashSalesCount": closure.cash_sales_count,
+        "totalSalesCount": closure.total_sales_count,
         "createdAt": closure.created_at.isoformat(),
     }
     if as_movement:
@@ -570,7 +605,9 @@ def create_cash_closure(payload: CashClosureInput, db: Session = Depends(get_db)
             raise HTTPException(409, "O caixa já está fechado. Abra um novo caixa para voltar a vender.")
         period_end = datetime.now(timezone.utc)
         period_start = register.opened_at
-        system_total, sale_count = cash_period(db, operator_email, period_start, period_end)
+        system_total, cash_sale_count, total_sale_count = cash_period(
+            db, operator_email, period_start, period_end
+        )
         declared_total = payload.declaredCashTotal.quantize(CENT, rounding=ROUND_HALF_UP)
         closure = CashClosure(
             operator_name=payload.operatorName.strip(),
@@ -580,7 +617,8 @@ def create_cash_closure(payload: CashClosureInput, db: Session = Depends(get_db)
             system_cash_total=system_total,
             declared_cash_total=declared_total,
             difference=(declared_total - system_total).quantize(CENT),
-            cash_sales_count=sale_count,
+            cash_sales_count=cash_sale_count,
+            total_sales_count=total_sale_count,
         )
         db.add(closure)
         db.flush()

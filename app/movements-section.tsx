@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 type Movement = {
   id: number;
   productId: number;
@@ -22,6 +24,7 @@ type Movement = {
   declaredCashTotal?: number;
   difference?: number;
   cashSalesCount?: number;
+  totalSalesCount?: number;
   createdAt: string;
 };
 
@@ -47,6 +50,7 @@ export default function MovementsSection({
   setSearch: (value: string) => void;
   onNew: () => void;
 }) {
+  const [selectedClosure, setSelectedClosure] = useState<Movement | null>(null);
   const groupedSales = new Map<number, Movement[]>();
   const groupedCancellations = new Map<number, Movement[]>();
   const rows: MovementRow[] = [];
@@ -100,11 +104,24 @@ export default function MovementsSection({
                 const closure = row.movement;
                 const difference = closure.difference || 0;
                 return (
-                  <tr className="cash-closure-row" key={row.key}>
+                  <tr
+                    className="cash-closure-row"
+                    key={row.key}
+                    role="button"
+                    tabIndex={0}
+                    title="Ver detalhes do fechamento"
+                    onClick={() => setSelectedClosure(closure)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedClosure(closure);
+                      }
+                    }}
+                  >
                     <td>{dateTime(closure.createdAt)}</td>
                     <td><div className="sale-operation cash-closure"><span>R$</span><div><strong>Fechamento de caixa #{closure.closureId}</strong><small>Operador: {closure.operatorName || "Não informado"}</small></div></div></td>
                     <td><span className="movement-tag fechamento">fechamento</span></td>
-                    <td><div className="closure-count"><strong>{closure.cashSalesCount || 0}</strong><small>vendas em dinheiro</small></div></td>
+                    <td><div className="closure-count"><strong>{closure.totalSalesCount ?? closure.cashSalesCount ?? 0}</strong><small>vendas realizadas</small></div></td>
                     <td><div className="closure-value"><small>Valor no sistema</small><strong>{money(closure.systemCashTotal || 0)}</strong></div></td>
                     <td><div className="closure-value"><small>Valor informado</small><strong>{money(closure.declaredCashTotal || 0)}</strong></div></td>
                     <td><div className={`closure-difference ${difference === 0 ? "balanced" : "unbalanced"}`}><small>Diferença</small><strong>{money(difference)}</strong></div></td>
@@ -159,6 +176,76 @@ export default function MovementsSection({
         </table>
         {!rows.length && <div className="empty"><span>◇</span><p>Nenhuma movimentação encontrada.</p></div>}
       </article>
+      {selectedClosure && (
+        <div
+          className="closure-detail-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedClosure(null);
+          }}
+        >
+          <article
+            className="closure-detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="closure-detail-title"
+          >
+            <button
+              className="closure-detail-close"
+              type="button"
+              aria-label="Fechar detalhes"
+              onClick={() => setSelectedClosure(null)}
+            >
+              ×
+            </button>
+            <header className="closure-detail-header">
+              <span>R$</span>
+              <div>
+                <small>FECHAMENTO DE CAIXA</small>
+                <h2 id="closure-detail-title">Fechamento #{selectedClosure.closureId}</h2>
+                <p>Resumo da conferência realizada pelo operador.</p>
+              </div>
+            </header>
+            <section className="closure-detail-period">
+              <div>
+                <small>ABERTURA DO CAIXA</small>
+                <strong>{selectedClosure.periodStart ? dateTime(selectedClosure.periodStart) : "Não informado"}</strong>
+              </div>
+              <span aria-hidden="true">→</span>
+              <div>
+                <small>FECHAMENTO DO CAIXA</small>
+                <strong>{selectedClosure.periodEnd ? dateTime(selectedClosure.periodEnd) : dateTime(selectedClosure.createdAt)}</strong>
+              </div>
+            </section>
+            <dl className="closure-detail-grid">
+              <div className="closure-detail-wide">
+                <dt>Operador responsável</dt>
+                <dd>{selectedClosure.operatorName || "Não informado"}</dd>
+              </div>
+              <div>
+                <dt>Quantidade de vendas</dt>
+                <dd>{selectedClosure.totalSalesCount ?? selectedClosure.cashSalesCount ?? 0}</dd>
+              </div>
+              <div>
+                <dt>Valor esperado</dt>
+                <dd>{money(selectedClosure.systemCashTotal || 0)}</dd>
+              </div>
+              <div>
+                <dt>Valor informado</dt>
+                <dd>{money(selectedClosure.declaredCashTotal || 0)}</dd>
+              </div>
+              <div className={`closure-detail-difference ${(selectedClosure.difference || 0) === 0 ? "balanced" : "unbalanced"}`}>
+                <dt>Diferença</dt>
+                <dd>{money(selectedClosure.difference || 0)}</dd>
+              </div>
+            </dl>
+            <footer>
+              <button type="button" className="primary" onClick={() => setSelectedClosure(null)}>
+                Fechar
+              </button>
+            </footer>
+          </article>
+        </div>
+      )}
     </>
   );
 }

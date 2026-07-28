@@ -9,7 +9,7 @@ import EmployeesSection from "./employees-section";
 type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "funcionarios" | "movimentacoes" | "relatorios";
 type Product = { id:number; sku:string; barcode:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; salePriceUpdatedAt:string|null; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
 type Supplier = { id:number; name:string; document:string; contact:string; email:string; phone:string; productCount:number; active:boolean };
-type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; saleId?:number|null; operatorName?:string; createdAt:string };
+type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; saleId?:number|null; operatorName?:string; closureId?:number; periodStart?:string; periodEnd?:string; systemCashTotal?:number; declaredCashTotal?:number; difference?:number; cashSalesCount?:number; totalSalesCount?:number; createdAt:string };
 type Summary = { totalProducts:number; lowStock:number; stockValue:number; retailValue:number; totalSuppliers:number };
 type DeleteTarget = { kind:"products"|"suppliers"; id:number; name:string; linkedCount:number };
 type ProductSortKey = "name"|"sku"|"supplier"|"cost"|"sale"|"stock"|"status";

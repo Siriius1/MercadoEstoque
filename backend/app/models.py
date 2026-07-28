@@ -119,6 +119,7 @@ class CashClosure(Base):
     declared_cash_total: Mapped[Decimal] = mapped_column(money_type)
     difference: Mapped[Decimal] = mapped_column(money_type)
     cash_sales_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_sales_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

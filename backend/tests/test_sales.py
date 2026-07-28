@@ -274,12 +274,15 @@ def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
         assert closure["systemCashTotal"] == 10
         assert closure["declaredCashTotal"] == 9
         assert closure["difference"] == -1
+        assert closure["cashSalesCount"] == 1
+        assert closure["totalSalesCount"] == 2
 
         movement = client.get("/api/movements").json()["movements"][0]
         assert movement["type"] == "fechamento"
         assert movement["systemCashTotal"] == 10
         assert movement["declaredCashTotal"] == 9
         assert movement["difference"] == -1
+        assert movement["totalSalesCount"] == 2
 
         closed_status = client.get(
             "/api/cash-registers/status",
@@ -325,4 +328,5 @@ def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
         ).json()["closure"]
         assert second_closure["systemCashTotal"] == 5
         assert second_closure["cashSalesCount"] == 1
+        assert second_closure["totalSalesCount"] == 1
         assert second_closure["difference"] == 0
