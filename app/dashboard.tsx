@@ -188,7 +188,67 @@ function SuppliersSection({suppliers,search,setSearch,onNew,onEdit,onDelete}:{su
 
 function MovementsSection({movements,search,setSearch,onNew}:{movements:Movement[];search:string;setSearch:(s:string)=>void;onNew:()=>void}) { return <><PageTitle eyebrow="HISTÓRICO" title="Movimentações" description="Rastreie cada entrada, saída e ajuste de estoque." action={<button className="primary" onClick={onNew}>+ Registrar movimentação</button>}/><div className="toolbar"><SearchBar value={search} onChange={setSearch} placeholder="Buscar produto, código ou motivo..."/><span>{movements.length} registros</span></div><article className="table-card"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Quantidade</th><th>Estoque anterior</th><th>Estoque final</th><th>Motivo</th></tr></thead><tbody>{movements.map(m=><tr key={m.id}><td>{dateTime(m.createdAt)}</td><td><div className="product-cell"><span className="mini-avatar">{initials(m.productName)}</span><div><strong>{m.productName}</strong><small>{m.sku}</small></div></div></td><td><span className={`movement-tag ${m.type}`}>{m.type}</span></td><td><strong>{m.type==="saida"?"-":"+"}{m.quantity} {m.unit}</strong></td><td>{m.previousStock} {m.unit}</td><td>{m.resultingStock} {m.unit}</td><td>{m.reason || "—"}</td></tr>)}</tbody></table>{!movements.length&&<Empty text="Nenhuma movimentação encontrada."/>}</article></>; }
 
-function ReportsSection({products,movements,summary}:{products:Product[];movements:Movement[];summary:Summary}) { const categories=Object.entries(products.reduce<Record<string,number>>((a,p)=>{a[p.category]=(a[p.category]||0)+p.currentStock*p.costPrice;return a;},{})).sort((a,b)=>b[1]-a[1]); const max=Math.max(...categories.map(c=>c[1]),1); return <><PageTitle eyebrow="ANÁLISE" title="Relatórios" description="Indicadores para tomar decisões melhores sobre o estoque."/><section className="stats-grid"><Stat icon="R$" label="Custo do estoque" value={money(summary.stockValue)} detail="capital investido"/><Stat icon="↗" label="Valor de venda" value={money(summary.retailValue)} detail="potencial de receita" tone="blue"/><Stat icon="%" label="Margem potencial" value={summary.retailValue?`${Math.round((summary.retailValue-summary.stockValue)/summary.retailValue*100)}%`:"0%"} detail="sobre valor de venda" tone="yellow"/><Stat icon="⇄" label="Movimentações" value={movements.length} detail="registros no histórico" tone="cream"/></section><section className="dashboard-grid reports"><article className="panel"><div className="panel-head"><div><h2>Valor por categoria</h2><p>Distribuição do custo atual</p></div></div><div className="bars">{categories.map(([name,value])=><div key={name}><div><span>{name}</span><b>{money(value)}</b></div><i><span style={{width:`${value/max*100}%`}}/></i></div>)}</div></article><article className="panel"><div className="panel-head"><div><h2>Resumo operacional</h2><p>Pontos importantes do cadastro</p></div></div><div className="report-list"><div><span>Produtos sem fornecedor</span><strong>{products.filter(p=>!p.supplierId).length}</strong></div><div><span>Produtos com estoque baixo</span><strong>{products.filter(p=>p.currentStock<=p.minimumStock).length}</strong></div><div><span>Produtos inativos</span><strong>{products.filter(p=>!p.active).length}</strong></div><div><span>Lucro bruto potencial</span><strong>{money(summary.retailValue-summary.stockValue)}</strong></div></div></article></section></>; }
+function SalesChart({data,emptyText,minWidth}:{data:Array<{label:string;value:number;count:number}>;emptyText:string;minWidth:number}) {
+  const maxValue=Math.max(...data.map(item=>item.value),1);
+  const hasSales=data.some(item=>item.count>0);
+  return <div className="sales-chart-scroll">
+    <div className="sales-chart" style={{minWidth}}>
+      {data.map(item=><div className="sales-chart-column" key={item.label} title={`${item.label}: ${money(item.value)} em ${item.count} venda(s)`}>
+        <span className={item.value>0?"visible":""}>{item.value>0?money(item.value):""}</span>
+        <div><i className={item.value>0?"has-value":""} style={{height:item.value>0?`${Math.max(item.value/maxValue*100,7)}%`:"2px"}}/></div>
+        <b>{item.label}</b>
+      </div>)}
+      {!hasSales&&<div className="sales-chart-empty">{emptyText}</div>}
+    </div>
+  </div>;
+}
+
+function ReportsSection({products,movements,summary}:{products:Product[];movements:Movement[];summary:Summary}) {
+  const categories=Object.entries(products.reduce<Record<string,number>>((a,p)=>{a[p.category]=(a[p.category]||0)+p.currentStock*p.costPrice;return a;},{})).sort((a,b)=>b[1]-a[1]);
+  const max=Math.max(...categories.map(c=>c[1]),1);
+  const now=new Date();
+  const cancelledSales=new Set(movements.filter(m=>m.saleId&&m.reason.startsWith("Cancelamento da venda")).map(m=>m.saleId as number));
+  const salesById=new Map<number,{date:Date;total:number}>();
+  for(const movement of movements){
+    if(!movement.saleId||cancelledSales.has(movement.saleId)||movement.reason.startsWith("Cancelamento da venda")||salesById.has(movement.saleId))continue;
+    const match=movement.notes.match(/Total da compra:\s*R\$\s*([\d.,]+)/i);
+    if(!match)continue;
+    const raw=match[1];
+    const parsed=Number(raw.includes(",")?raw.replace(/\./g,"").replace(",","."):raw);
+    if(Number.isFinite(parsed))salesById.set(movement.saleId,{date:new Date(movement.createdAt),total:parsed});
+  }
+  const sales=[...salesById.values()];
+  const dailyData=Array.from({length:24},(_,hour)=>{
+    const hourSales=sales.filter(sale=>sale.date.getFullYear()===now.getFullYear()&&sale.date.getMonth()===now.getMonth()&&sale.date.getDate()===now.getDate()&&sale.date.getHours()===hour);
+    return {label:`${String(hour).padStart(2,"0")}h`,value:hourSales.reduce((total,sale)=>total+sale.total,0),count:hourSales.length};
+  });
+  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const monthlyData=Array.from({length:daysInMonth},(_,index)=>{
+    const day=index+1;
+    const daySales=sales.filter(sale=>sale.date.getFullYear()===now.getFullYear()&&sale.date.getMonth()===now.getMonth()&&sale.date.getDate()===day);
+    return {label:String(day).padStart(2,"0"),value:daySales.reduce((total,sale)=>total+sale.total,0),count:daySales.length};
+  });
+  const todayTotal=dailyData.reduce((total,item)=>total+item.value,0);
+  const todayCount=dailyData.reduce((total,item)=>total+item.count,0);
+  const monthTotal=monthlyData.reduce((total,item)=>total+item.value,0);
+  const monthCount=monthlyData.reduce((total,item)=>total+item.count,0);
+  const monthName=new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"}).format(now);
+
+  return <><PageTitle eyebrow="ANÁLISE" title="Relatórios" description="Indicadores para tomar decisões melhores sobre o estoque."/>
+    <section className="sales-report-grid">
+      <article className="panel sales-chart-card">
+        <div className="panel-head"><div><h2>Vendas de hoje</h2><p>Faturamento por hora em {new Intl.DateTimeFormat("pt-BR",{dateStyle:"long"}).format(now)}</p></div><div className="sales-chart-total"><small>{todayCount} venda(s)</small><strong>{money(todayTotal)}</strong></div></div>
+        <SalesChart data={dailyData} emptyText="Nenhuma venda registrada hoje." minWidth={820}/>
+      </article>
+      <article className="panel sales-chart-card">
+        <div className="panel-head"><div><h2>Vendas mensais</h2><p>Faturamento diário de {monthName}</p></div><div className="sales-chart-total"><small>{monthCount} venda(s)</small><strong>{money(monthTotal)}</strong></div></div>
+        <SalesChart data={monthlyData} emptyText="Nenhuma venda registrada neste mês." minWidth={960}/>
+      </article>
+    </section>
+    <section className="stats-grid"><Stat icon="R$" label="Custo do estoque" value={money(summary.stockValue)} detail="capital investido"/><Stat icon="↗" label="Valor de venda" value={money(summary.retailValue)} detail="potencial de receita" tone="blue"/><Stat icon="%" label="Margem potencial" value={summary.retailValue?`${Math.round((summary.retailValue-summary.stockValue)/summary.retailValue*100)}%`:"0%"} detail="sobre valor de venda" tone="yellow"/><Stat icon="⇄" label="Movimentações" value={movements.length} detail="registros no histórico" tone="cream"/></section>
+    <section className="dashboard-grid reports"><article className="panel"><div className="panel-head"><div><h2>Valor por categoria</h2><p>Distribuição do custo atual</p></div></div><div className="bars">{categories.map(([name,value])=><div key={name}><div><span>{name}</span><b>{money(value)}</b></div><i><span style={{width:`${value/max*100}%`}}/></i></div>)}</div></article><article className="panel"><div className="panel-head"><div><h2>Resumo operacional</h2><p>Pontos importantes do cadastro</p></div></div><div className="report-list"><div><span>Produtos sem fornecedor</span><strong>{products.filter(p=>!p.supplierId).length}</strong></div><div><span>Produtos com estoque baixo</span><strong>{products.filter(p=>p.currentStock<=p.minimumStock).length}</strong></div><div><span>Produtos inativos</span><strong>{products.filter(p=>!p.active).length}</strong></div><div><span>Lucro bruto potencial</span><strong>{money(summary.retailValue-summary.stockValue)}</strong></div></div></article></section>
+  </>;
+}
 
 function Modal({title,description,onClose,children}:{title:string;description:string;onClose:()=>void;children:React.ReactNode}) { return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><div className="modal"><button className="modal-close" onClick={onClose}>×</button><small>Mercado+</small><h2>{title}</h2><p>{description}</p>{children}</div></div>; }
 function DeleteConfirmModal({target,onClose,onConfirm}:{target:DeleteTarget;onClose:()=>void;onConfirm:(target:DeleteTarget,hideWarning?:boolean)=>Promise<void>}) {
