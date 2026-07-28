@@ -65,3 +65,8 @@ class CashClosureInput(BaseModel):
     operatorName: str = Field(min_length=1, max_length=180)
     operatorEmail: str = Field(min_length=3, max_length=180)
     declaredCashTotal: Decimal = Field(ge=0)
+
+
+class CashRegisterOpenInput(BaseModel):
+    operatorName: str = Field(min_length=1, max_length=180)
+    operatorEmail: str = Field(min_length=3, max_length=180)

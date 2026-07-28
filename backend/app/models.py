@@ -122,6 +122,24 @@ class CashClosure(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CashRegister(Base):
+    __tablename__ = "cash_registers"
+    __table_args__ = (
+        CheckConstraint("status IN ('open', 'closed')", name="cash_registers_status_valid"),
+        Index("cash_registers_operator_status_idx", "operator_email", "status", "opened_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    operator_name: Mapped[str] = mapped_column(String(180))
+    operator_email: Mapped[str] = mapped_column(String(180))
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closure_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cash_closures.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+
+
 class StockMovement(Base):
     __tablename__ = "stock_movements"
     __table_args__ = (

@@ -2,7 +2,6 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
-from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,10 +11,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import CashClosure, Product, Sale, SaleItem, StockMovement, Supplier
+from .models import CashClosure, CashRegister, Product, Sale, SaleItem, StockMovement, Supplier
 from .schemas import (
     CancelSaleInput,
     CashClosureInput,
+    CashRegisterOpenInput,
     MovementInput,
     ProductInput,
     SaleInput,
@@ -25,7 +25,6 @@ from .serializers import movement_json, number, product_json, supplier_json
 
 
 CENT = Decimal("0.01")
-SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 
 
 def initialize_database() -> None:
@@ -320,6 +319,64 @@ def dashboard(db: Session = Depends(get_db)) -> dict:
     return {"summary": summary, "recent": [movement_json(movement) for movement in recent]}
 
 
+def find_open_cash_register(
+    db: Session, operator_email: str, *, lock: bool = False
+) -> CashRegister | None:
+    statement = (
+        select(CashRegister)
+        .where(
+            func.lower(CashRegister.operator_email) == operator_email,
+            CashRegister.status == "open",
+        )
+        .order_by(CashRegister.opened_at.desc(), CashRegister.id.desc())
+        .limit(1)
+    )
+    if lock:
+        statement = statement.with_for_update()
+    return db.scalar(statement)
+
+
+def cash_register_json(register: CashRegister) -> dict:
+    return {
+        "id": register.id,
+        "operatorName": register.operator_name,
+        "operatorEmail": register.operator_email,
+        "status": register.status,
+        "openedAt": register.opened_at.isoformat(),
+        "closedAt": register.closed_at.isoformat() if register.closed_at else None,
+        "closureId": register.closure_id,
+    }
+
+
+@app.get("/api/cash-registers/status")
+def cash_register_status(operatorEmail: str, db: Session = Depends(get_db)) -> dict:
+    register = find_open_cash_register(db, operatorEmail.strip().lower())
+    return {
+        "isOpen": register is not None,
+        "register": cash_register_json(register) if register else None,
+    }
+
+
+@app.post("/api/cash-registers/open", status_code=201)
+def open_cash_register(payload: CashRegisterOpenInput, db: Session = Depends(get_db)) -> dict:
+    operator_email = payload.operatorEmail.strip().lower()
+    with db.begin():
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"cash-register:{operator_email}"},
+        )
+        if find_open_cash_register(db, operator_email, lock=True):
+            raise HTTPException(409, "Este operador já possui um caixa aberto.")
+        register = CashRegister(
+            operator_name=payload.operatorName.strip(),
+            operator_email=operator_email,
+            status="open",
+        )
+        db.add(register)
+        db.flush()
+    return {"register": cash_register_json(register)}
+
+
 @app.post("/api/sales", status_code=201)
 def create_sale(payload: SaleInput, db: Session = Depends(get_db)) -> dict:
     requested: dict[int, Decimal] = defaultdict(Decimal)
@@ -331,6 +388,8 @@ def create_sale(payload: SaleInput, db: Session = Depends(get_db)) -> dict:
             text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
             {"key": f"cash-register:{payload.operatorEmail.strip().lower()}"},
         )
+        if not find_open_cash_register(db, payload.operatorEmail.strip().lower(), lock=True):
+            raise HTTPException(409, "O caixa está fechado. Abra um novo caixa antes de realizar vendas.")
         products = db.scalars(
             select(Product)
             .where(Product.id.in_(sorted(requested)))
@@ -429,18 +488,9 @@ def sale_json(sale: Sale) -> dict:
     }
 
 
-def cash_period(db: Session, operator_email: str, period_end: datetime) -> tuple[datetime, Decimal, int]:
-    last_period_end = db.scalar(
-        select(CashClosure.period_end)
-        .where(func.lower(CashClosure.operator_email) == operator_email)
-        .order_by(CashClosure.period_end.desc(), CashClosure.id.desc())
-        .limit(1)
-    )
-    if last_period_end:
-        period_start = last_period_end
-    else:
-        local_now = period_end.astimezone(SAO_PAULO)
-        period_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+def cash_period(
+    db: Session, operator_email: str, period_start: datetime, period_end: datetime
+) -> tuple[Decimal, int]:
     system_total, sale_count = db.execute(
         select(func.coalesce(func.sum(Sale.total), 0), func.count(Sale.id)).where(
             Sale.status == "completed",
@@ -450,7 +500,7 @@ def cash_period(db: Session, operator_email: str, period_end: datetime) -> tuple
             Sale.created_at <= period_end,
         )
     ).one()
-    return period_start, Decimal(system_total).quantize(CENT), int(sale_count)
+    return Decimal(system_total).quantize(CENT), int(sale_count)
 
 
 def cash_closure_json(closure: CashClosure, as_movement: bool = False) -> dict:
@@ -494,13 +544,14 @@ def cash_closure_json(closure: CashClosure, as_movement: bool = False) -> dict:
 
 @app.get("/api/cash-closures/preview")
 def preview_cash_closure(operatorEmail: str, db: Session = Depends(get_db)) -> dict:
+    operator_email = operatorEmail.strip().lower()
+    register = find_open_cash_register(db, operator_email)
+    if not register:
+        raise HTTPException(409, "O caixa já está fechado.")
     period_end = datetime.now(timezone.utc)
-    period_start, _, _ = cash_period(
-        db, operatorEmail.strip().lower(), period_end
-    )
     return {
         "preview": {
-            "periodStart": period_start.isoformat(),
+            "periodStart": register.opened_at.isoformat(),
             "periodEnd": period_end.isoformat(),
         }
     }
@@ -514,8 +565,12 @@ def create_cash_closure(payload: CashClosureInput, db: Session = Depends(get_db)
             text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
             {"key": f"cash-register:{operator_email}"},
         )
+        register = find_open_cash_register(db, operator_email, lock=True)
+        if not register:
+            raise HTTPException(409, "O caixa já está fechado. Abra um novo caixa para voltar a vender.")
         period_end = datetime.now(timezone.utc)
-        period_start, system_total, sale_count = cash_period(db, operator_email, period_end)
+        period_start = register.opened_at
+        system_total, sale_count = cash_period(db, operator_email, period_start, period_end)
         declared_total = payload.declaredCashTotal.quantize(CENT, rounding=ROUND_HALF_UP)
         closure = CashClosure(
             operator_name=payload.operatorName.strip(),
@@ -529,6 +584,9 @@ def create_cash_closure(payload: CashClosureInput, db: Session = Depends(get_db)
         )
         db.add(closure)
         db.flush()
+        register.status = "closed"
+        register.closed_at = period_end
+        register.closure_id = closure.id
     return {"closure": cash_closure_json(closure)}
 
 

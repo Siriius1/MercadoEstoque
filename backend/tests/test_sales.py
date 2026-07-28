@@ -28,6 +28,19 @@ def create_supplier(client: TestClient) -> int:
     return response.json()["supplier"]["id"]
 
 
+def open_cash_register(
+    client: TestClient,
+    operator_name: str = "Operador Teste",
+    operator_email: str = "operador@teste.com",
+) -> dict:
+    response = client.post(
+        "/api/cash-registers/open",
+        json={"operatorName": operator_name, "operatorEmail": operator_email},
+    )
+    assert response.status_code == 201
+    return response.json()["register"]
+
+
 def test_product_requires_supplier_prices_and_initial_stock() -> None:
     reset_database()
     with TestClient(app) as client:
@@ -64,6 +77,7 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
         assert product_response.status_code == 201
         product_id = product_response.json()["product"]["id"]
         assert product_response.json()["product"]["minimumStock"] == 5
+        open_cash_register(client)
 
         sale_response = client.post(
             "/api/sales",
@@ -187,6 +201,7 @@ def test_one_insufficient_item_rolls_back_every_item() -> None:
                 "supplierId": supplier_id,
             },
         ).json()["product"]
+        open_cash_register(client)
 
         response = client.post(
             "/api/sales",
@@ -227,6 +242,11 @@ def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
             "operatorName": "Operador Caixa",
             "operatorEmail": "caixa@teste.com",
         }
+        first_register = open_cash_register(client, **{
+            "operator_name": operator["operatorName"],
+            "operator_email": operator["operatorEmail"],
+        })
+        assert first_register["status"] == "open"
         for payment_method in ("dinheiro", "pix"):
             response = client.post(
                 "/api/sales",
@@ -261,15 +281,19 @@ def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
         assert movement["declaredCashTotal"] == 9
         assert movement["difference"] == -1
 
+        closed_status = client.get(
+            "/api/cash-registers/status",
+            params={"operatorEmail": operator["operatorEmail"]},
+        ).json()
+        assert closed_status["isOpen"] is False
+
         next_preview = client.get(
             "/api/cash-closures/preview",
             params={"operatorEmail": operator["operatorEmail"]},
-        ).json()["preview"]
-        assert datetime.fromisoformat(next_preview["periodStart"]) == datetime.fromisoformat(
-            closure["periodEnd"]
         )
+        assert next_preview.status_code == 409
 
-        client.post(
+        blocked_sale = client.post(
             "/api/sales",
             json={
                 "items": [{"productId": product["id"], "quantity": 1}],
@@ -277,6 +301,24 @@ def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
                 **operator,
             },
         )
+        assert blocked_sale.status_code == 409
+
+        second_register = open_cash_register(client, **{
+            "operator_name": operator["operatorName"],
+            "operator_email": operator["operatorEmail"],
+        })
+        assert datetime.fromisoformat(second_register["openedAt"]) >= datetime.fromisoformat(
+            closure["periodEnd"]
+        )
+        sale_after_opening = client.post(
+            "/api/sales",
+            json={
+                "items": [{"productId": product["id"], "quantity": 1}],
+                "paymentMethod": "dinheiro",
+                **operator,
+            },
+        )
+        assert sale_after_opening.status_code == 201
         second_closure = client.post(
             "/api/cash-closures",
             json={**operator, "declaredCashTotal": 5},

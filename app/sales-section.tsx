@@ -27,6 +27,11 @@ type CashClosurePreview = {
   periodStart: string;
   periodEnd: string;
 };
+type CashRegister = {
+  id: number;
+  status: "open" | "closed";
+  openedAt: string;
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_MERCADO_API_URL || "";
 const money = (value: number) =>
@@ -58,6 +63,7 @@ export default function SalesSection({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [clock, setClock] = useState("");
+  const [cashRegister, setCashRegister] = useState<CashRegister | null | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const available = useMemo(
@@ -85,14 +91,21 @@ export default function SalesSection({
   }, []);
 
   useEffect(() => {
+    void loadCashRegisterStatus();
+  }, [user.email]);
+
+  useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.key === "F2") {
         event.preventDefault();
-        if (!payment && !cashPreview && !submitting) void requestCancellation();
+        if (cashRegister && !payment && !cashPreview && !submitting) void requestCancellation();
       }
       if (event.key === "F4") {
         event.preventDefault();
-        if (!payment && !cancelSale && !submitting) void requestCashClosure();
+        if (!payment && !cancelSale && !submitting) {
+          if (cashRegister) void requestCashClosure();
+          else if (cashRegister === null) void openCashRegister();
+        }
       }
     };
     window.addEventListener("keydown", handleShortcut);
@@ -100,6 +113,10 @@ export default function SalesSection({
   });
 
   function addProduct(product: SalesProduct, quantity = addQuantity) {
+    if (!cashRegister) {
+      setError("Abra um novo caixa antes de adicionar produtos.");
+      return;
+    }
     setError("");
     setSuccess("");
     setCart((current) => {
@@ -125,6 +142,7 @@ export default function SalesSection({
   }
 
   function handleSearchEnter() {
+    if (!cashRegister) return;
     const normalized = query.trim().toLocaleLowerCase("pt-BR");
     const exact = available.find(
       (product) =>
@@ -137,7 +155,7 @@ export default function SalesSection({
   }
 
   async function finalizeSale() {
-    if (!payment || !lines.length) return;
+    if (!cashRegister || !payment || !lines.length) return;
     setSubmitting(true);
     setError("");
     try {
@@ -161,6 +179,42 @@ export default function SalesSection({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível finalizar a venda.");
       setPayment(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function loadCashRegisterStatus() {
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/cash-registers/status?operatorEmail=${encodeURIComponent(user.email)}`,
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "Não foi possível verificar o caixa.");
+      setCashRegister(result.isOpen ? result.register : null);
+    } catch (caught) {
+      setCashRegister(null);
+      setError(caught instanceof Error ? caught.message : "Não foi possível verificar o caixa.");
+    }
+  }
+
+  async function openCashRegister() {
+    setSubmitting(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch(`${API_BASE}/api/cash-registers/open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operatorName: user.name, operatorEmail: user.email }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "Não foi possível abrir o caixa.");
+      setCashRegister(result.register);
+      setSuccess(`Caixa #${result.register.id} aberto. As vendas estão liberadas.`);
+      searchRef.current?.focus();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível abrir o caixa.");
     } finally {
       setSubmitting(false);
     }
@@ -240,8 +294,11 @@ export default function SalesSection({
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || "Não foi possível fechar o caixa.");
       setCashPreview(null);
+      setCashRegister(null);
+      setCart({});
+      setPayment(null);
       setSuccess(
-        `Fechamento #${result.closure.id} registrado — valor informado: ${money(result.closure.declaredCashTotal)}.`,
+        `Fechamento #${result.closure.id} registrado. O caixa foi bloqueado para novas vendas.`,
       );
       await onSaleCompleted();
       searchRef.current?.focus();
@@ -256,7 +313,7 @@ export default function SalesSection({
     <section className="sales-page">
       <div className="sales-register-bar">
         <div className="register-title">
-          <span className="register-status"><i /> CAIXA ABERTO</span>
+          <span className={`register-status ${cashRegister ? "" : "closed"}`}><i /> {cashRegister === undefined ? "VERIFICANDO" : cashRegister ? "CAIXA ABERTO" : "CAIXA FECHADO"}</span>
           <div><small>FRENTE DE CAIXA</small><h1>Nova venda</h1></div>
         </div>
         <div className="register-meta">
@@ -265,7 +322,16 @@ export default function SalesSection({
         </div>
       </div>
 
-      <div className="pos-layout">
+      <div className={`pos-layout ${cashRegister ? "" : "cash-register-locked"}`}>
+        {!cashRegister && (
+          <div className="cash-register-lock">
+            {cashRegister === undefined ? (
+              <><span className="register-lock-mark"><i /></span><small>VERIFICANDO CAIXA</small><h2>Aguarde um instante</h2><p>Estamos consultando a situação deste operador.</p></>
+            ) : (
+              <><span className="register-lock-mark"><i /></span><small>CAIXA FECHADO</small><h2>Abra um novo caixa para começar</h2><p>As vendas permanecem bloqueadas até que um novo caixa seja aberto.</p><button type="button" onClick={openCashRegister} disabled={submitting}><kbd>F4</kbd>{submitting ? "Abrindo caixa..." : "Abrir novo caixa"}</button>{error && <span className="register-lock-error">{error}</span>}</>
+            )}
+          </div>
+        )}
         <section className="catalog-panel">
           <div className="pos-search-row">
             <label className="pos-search">
@@ -273,6 +339,7 @@ export default function SalesSection({
               <input
                 ref={searchRef}
                 autoFocus
+                disabled={!cashRegister}
                 value={query}
                 onChange={(event) => { setQuery(event.target.value); setError(""); }}
                 onKeyDown={(event) => {
@@ -289,6 +356,7 @@ export default function SalesSection({
               <span>Quant.</span>
               <input
                 type="number"
+                disabled={!cashRegister}
                 min="1"
                 step="1"
                 value={addQuantity}
@@ -302,7 +370,7 @@ export default function SalesSection({
           </div>
           <div className="shortcut-grid">
             {filtered.map((product) => (
-              <button className={`product-shortcut ${cart[product.id] ? "in-cart" : ""}`} key={product.id} onClick={() => addProduct(product)}>
+              <button disabled={!cashRegister} className={`product-shortcut ${cart[product.id] ? "in-cart" : ""}`} key={product.id} onClick={() => addProduct(product)}>
                 <div className="product-card-heading"><span>{product.name}</span><b>{product.category}</b></div>
                 <small>{product.sku}{product.barcode ? ` · ${product.barcode}` : ""}</small>
                 <strong>{money(product.salePrice)}</strong>
@@ -319,11 +387,11 @@ export default function SalesSection({
             </div>
           )}
           <div className="pos-shortcuts">
-            <button className="cancel-last-sale" type="button" onClick={requestCancellation}>
+            <button className="cancel-last-sale" type="button" disabled={!cashRegister} onClick={requestCancellation}>
               <kbd>F2</kbd>
               <span><strong>Cancelar última venda</strong><small>Estorna o valor e devolve os itens ao estoque</small></span>
             </button>
-            <button className="close-cash-register" type="button" onClick={requestCashClosure}>
+            <button className="close-cash-register" type="button" disabled={!cashRegister} onClick={requestCashClosure}>
               <kbd>F4</kbd>
               <span><strong>Fechamento de caixa</strong><small>Compare o dinheiro contado com o sistema</small></span>
             </button>
@@ -370,9 +438,9 @@ export default function SalesSection({
             <div className="sale-total"><span>Total da venda</span><strong>{money(total)}</strong></div>
             <p>FORMA DE PAGAMENTO</p>
             <div className="payment-buttons">
-              <button className="payment-cash" disabled={!lines.length} onClick={() => setPayment("dinheiro")}><span>R$</span><b>Dinheiro</b><small>Receber agora</small></button>
-              <button className="payment-card" disabled={!lines.length} onClick={() => setPayment("cartao")}><span>▣</span><b>Cartão</b><small>Débito ou crédito</small></button>
-              <button className="payment-pix" disabled={!lines.length} onClick={() => setPayment("pix")}><span>◆</span><b>PIX</b><small>Pagamento digital</small></button>
+              <button className="payment-cash" disabled={!cashRegister || !lines.length} onClick={() => setPayment("dinheiro")}><span>R$</span><b>Dinheiro</b><small>Receber agora</small></button>
+              <button className="payment-card" disabled={!cashRegister || !lines.length} onClick={() => setPayment("cartao")}><span>▣</span><b>Cartão</b><small>Débito ou crédito</small></button>
+              <button className="payment-pix" disabled={!cashRegister || !lines.length} onClick={() => setPayment("pix")}><span>◆</span><b>PIX</b><small>Pagamento digital</small></button>
             </div>
           </footer>
         </aside>
