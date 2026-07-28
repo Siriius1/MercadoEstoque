@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PixPayment from "./pix-payment";
 import { PixSettings } from "./pix";
+import { API_BASE } from "./api-base";
 
 export type SalesProduct = {
   id: number;
@@ -35,11 +36,6 @@ type CashRegister = {
   openedAt: string;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_MERCADO_API_URL ||
-  (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? "http://127.0.0.1:8000"
-    : "");
 const money = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const dateTime = (value: string) =>

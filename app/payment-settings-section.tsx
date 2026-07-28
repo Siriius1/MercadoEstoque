@@ -3,12 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import PixPayment from "./pix-payment";
 import { emptyPixSettings, normalizePixKey, PixKeyType, PixSettings, validatePixSettings } from "./pix";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_MERCADO_API_URL ||
-  (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? "http://127.0.0.1:8000"
-    : "");
+import { API_BASE } from "./api-base";
 
 export default function PaymentSettingsSection() {
   const [settings, setSettings] = useState<PixSettings>(emptyPixSettings);

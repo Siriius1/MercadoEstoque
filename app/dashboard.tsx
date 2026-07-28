@@ -6,6 +6,7 @@ import SalesSection from "./sales-section";
 import SalesMovementsSection from "./movements-section";
 import EmployeesSection from "./employees-section";
 import PaymentSettingsSection from "./payment-settings-section";
+import { apiUrl } from "./api-base";
 
 type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "funcionarios" | "movimentacoes" | "relatorios" | "configuracoes";
 type Product = { id:number; sku:string; barcode:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; salePriceUpdatedAt:string|null; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
@@ -19,9 +20,6 @@ type Theme = "light"|"dark";
 const money = (value = 0) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const dateTime = (value:string) => { const normalized=value.replace(" ","T"); const hasTimezone=/Z$|[+-]\d{2}:\d{2}$/.test(normalized); return new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(hasTimezone?normalized:`${normalized}Z`)); };
 const initials = (name:string) => name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase();
-const API_BASE = process.env.NEXT_PUBLIC_MERCADO_API_URL || "";
-const apiUrl = (path:string) => `${API_BASE}${path}`;
-
 export default function Dashboard({user}:{user:{name:string;email:string;role:string}}) {
   const isCashier = user.role === "cashier";
   const [section, setSection] = useState<Section>(isCashier ? "vendas" : "painel");
