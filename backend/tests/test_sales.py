@@ -45,6 +45,39 @@ def test_supplier_document_accepts_only_complete_cpf_or_cnpj() -> None:
         assert valid.json()["supplier"]["document"] == "123.456.789-01"
 
 
+def test_pix_settings_are_validated_and_persisted() -> None:
+    reset_database()
+    with TestClient(app) as client:
+        default_settings = client.get("/api/payment-settings/pix").json()["settings"]
+        assert default_settings["enabled"] is False
+
+        invalid = client.put(
+            "/api/payment-settings/pix",
+            json={
+                "enabled": True,
+                "keyType": "cnpj",
+                "key": "123",
+                "receiverName": "Mercado Teste",
+                "city": "São Paulo",
+            },
+        )
+        assert invalid.status_code == 400
+
+        saved = client.put(
+            "/api/payment-settings/pix",
+            json={
+                "enabled": True,
+                "keyType": "cnpj",
+                "key": "12.345.678/0001-99",
+                "receiverName": "Mercado Teste",
+                "city": "São Paulo",
+            },
+        )
+        assert saved.status_code == 200
+        assert saved.json()["settings"]["key"] == "12345678000199"
+        assert client.get("/api/payment-settings/pix").json()["settings"]["receiverName"] == "Mercado Teste"
+
+
 def open_cash_register(
     client: TestClient,
     operator_name: str = "Operador Teste",

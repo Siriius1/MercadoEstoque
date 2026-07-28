@@ -11,13 +11,14 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import CashClosure, CashRegister, Product, Sale, SaleItem, StockMovement, Supplier
+from .models import CashClosure, CashRegister, PaymentSettings, Product, Sale, SaleItem, StockMovement, Supplier
 from .schemas import (
     CancelSaleInput,
     CashClosureInput,
     CashRegisterOpenInput,
     MovementInput,
     ProductInput,
+    PixPaymentSettingsInput,
     SaleInput,
     SupplierInput,
 )
@@ -95,6 +96,67 @@ def find_product(db: Session, product_id: int, lock: bool = False) -> Product:
 def validate_supplier(db: Session, supplier_id: int | None) -> None:
     if supplier_id is not None and not db.get(Supplier, supplier_id):
         raise HTTPException(400, "Fornecedor não encontrado.")
+
+
+def pix_settings_json(settings_record: PaymentSettings | None) -> dict:
+    if not settings_record:
+        return {
+            "enabled": False,
+            "keyType": "cnpj",
+            "key": "",
+            "receiverName": "",
+            "city": "",
+            "updatedAt": None,
+        }
+    return {
+        "enabled": settings_record.pix_enabled,
+        "keyType": settings_record.pix_key_type,
+        "key": settings_record.pix_key,
+        "receiverName": settings_record.pix_receiver_name,
+        "city": settings_record.pix_city,
+        "updatedAt": settings_record.updated_at.isoformat() if settings_record.updated_at else None,
+    }
+
+
+def validate_pix_settings(payload: PixPaymentSettingsInput) -> None:
+    if not payload.enabled:
+        return
+    key = payload.key
+    valid_key = (
+        (payload.keyType == "cpf" and len(key) == 11 and key.isdigit())
+        or (payload.keyType == "cnpj" and len(key) == 14 and key.isdigit())
+        or (payload.keyType == "telefone" and key.startswith("+55") and key[1:].isdigit() and len(key) in (13, 14))
+        or (payload.keyType == "email" and "@" in key and "." in key.rsplit("@", 1)[-1])
+        or (payload.keyType == "aleatoria" and 8 <= len(key) <= 77)
+    )
+    if not valid_key:
+        raise HTTPException(400, "Informe uma chave PIX válida para o tipo selecionado.")
+    if len(payload.receiverName) < 2:
+        raise HTTPException(400, "Informe o nome do recebedor.")
+    if len(payload.city) < 2:
+        raise HTTPException(400, "Informe a cidade do recebedor.")
+
+
+@app.get("/api/payment-settings/pix")
+def get_pix_settings(db: Session = Depends(get_db)) -> dict:
+    return {"settings": pix_settings_json(db.get(PaymentSettings, 1))}
+
+
+@app.put("/api/payment-settings/pix")
+def update_pix_settings(payload: PixPaymentSettingsInput, db: Session = Depends(get_db)) -> dict:
+    validate_pix_settings(payload)
+    with db.begin():
+        settings_record = db.get(PaymentSettings, 1)
+        if not settings_record:
+            settings_record = PaymentSettings(id=1)
+            db.add(settings_record)
+        settings_record.pix_enabled = payload.enabled
+        settings_record.pix_key_type = payload.keyType
+        settings_record.pix_key = payload.key
+        settings_record.pix_receiver_name = payload.receiverName
+        settings_record.pix_city = payload.city
+        db.flush()
+    return {"settings": pix_settings_json(settings_record)}
 
 
 @app.get("/api/products")

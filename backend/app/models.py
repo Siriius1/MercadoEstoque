@@ -141,6 +141,18 @@ class CashRegister(Base):
     )
 
 
+class PaymentSettings(Base):
+    __tablename__ = "payment_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    pix_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    pix_key_type: Mapped[str] = mapped_column(String(20), default="cnpj")
+    pix_key: Mapped[str] = mapped_column(String(180), default="")
+    pix_receiver_name: Mapped[str] = mapped_column(String(25), default="")
+    pix_city: Mapped[str] = mapped_column(String(15), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class StockMovement(Base):
     __tablename__ = "stock_movements"
     __table_args__ = (

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import PixPayment from "./pix-payment";
+import { PixSettings } from "./pix";
 
 export type SalesProduct = {
   id: number;
@@ -68,6 +70,7 @@ export default function SalesSection({
   const [success, setSuccess] = useState("");
   const [clock, setClock] = useState("");
   const [cashRegister, setCashRegister] = useState<CashRegister | null | undefined>(undefined);
+  const [pixSettings, setPixSettings] = useState<PixSettings | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const available = useMemo(
@@ -177,12 +180,32 @@ export default function SalesSection({
       if (!response.ok) throw new Error(result.detail || "Não foi possível finalizar a venda.");
       setCart({});
       setPayment(null);
+      setPixSettings(null);
       setSuccess(`Venda #${result.sale.id} concluída — ${money(result.sale.total)}.`);
       await onSaleCompleted();
       searchRef.current?.focus();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível finalizar a venda.");
       setPayment(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function requestPixPayment() {
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/payment-settings/pix`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || result.error || "Não foi possível carregar o PIX.");
+      if (!result.settings?.enabled) {
+        throw new Error("O PIX ainda não foi configurado pelo administrador.");
+      }
+      setPixSettings(result.settings);
+      setPayment("pix");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível carregar o PIX.");
     } finally {
       setSubmitting(false);
     }
@@ -449,7 +472,7 @@ export default function SalesSection({
             <div className="payment-buttons">
               <button className="payment-cash" disabled={!cashRegister || !lines.length} onClick={() => setPayment("dinheiro")}><span>R$</span><b>Dinheiro</b><small>Receber agora</small></button>
               <button className="payment-card" disabled={!cashRegister || !lines.length} onClick={() => setPayment("cartao")}><span>▣</span><b>Cartão</b><small>Débito ou crédito</small></button>
-              <button className="payment-pix" disabled={!cashRegister || !lines.length} onClick={() => setPayment("pix")}><span>◆</span><b>PIX</b><small>Pagamento digital</small></button>
+              <button className="payment-pix" disabled={!cashRegister || !lines.length || submitting} onClick={requestPixPayment}><span>◆</span><b>PIX</b><small>Pagamento digital</small></button>
             </div>
           </footer>
         </aside>
@@ -457,16 +480,18 @@ export default function SalesSection({
 
       {payment && (
         <div className="payment-backdrop">
-          <div className="payment-confirm">
+          <div className={`payment-confirm ${payment === "pix" ? "pix-payment-confirm" : ""}`}>
             <span className="payment-icon">{payment === "dinheiro" ? "R$" : payment === "cartao" ? "▣" : "◆"}</span>
             <small>CONFIRMAR PAGAMENTO</small>
             <h2>{payment === "cartao" ? "Cartão" : payment[0].toUpperCase() + payment.slice(1)}</h2>
             <strong>{money(total)}</strong>
-            <p>A venda será registrada e o estoque dos {lines.length} produto(s) será atualizado.</p>
-            <div>
-              <button className="cancel-payment" disabled={submitting} onClick={() => setPayment(null)}>Voltar</button>
+            {payment === "pix" && pixSettings
+              ? <><PixPayment settings={pixSettings} amount={total}/><p className="pix-manual-warning">Confirme somente depois que o operador verificar o recebimento na conta do estabelecimento.</p></>
+              : <p>A venda será registrada e o estoque dos {lines.length} produto(s) será atualizado.</p>}
+            <div className={payment === "pix" ? "pix-confirm-actions" : ""}>
+              <button className="cancel-payment" disabled={submitting} onClick={() => { setPayment(null); setPixSettings(null); }}>Voltar</button>
               <button className="confirm-payment" disabled={submitting} onClick={finalizeSale}>
-                {submitting ? "Finalizando..." : "Confirmar venda"}
+                {submitting ? "Finalizando..." : payment === "pix" ? "Confirmar recebimento e venda" : "Confirmar venda"}
               </button>
             </div>
           </div>

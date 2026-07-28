@@ -24,6 +24,7 @@ async function initializeDatabase() {
     d1.prepare("CREATE INDEX IF NOT EXISTS auth_sessions_token_idx ON auth_sessions (token_hash)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens (user_id)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS auth_tokens_token_idx ON auth_tokens (token_hash)"),
+    d1.prepare("CREATE TABLE IF NOT EXISTS payment_settings (id integer PRIMARY KEY NOT NULL, pix_enabled integer DEFAULT 0 NOT NULL, pix_key_type text DEFAULT 'cnpj' NOT NULL, pix_key text DEFAULT '' NOT NULL, pix_receiver_name text DEFAULT '' NOT NULL, pix_city text DEFAULT '' NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
   ]);
   const productColumns = await d1.prepare("PRAGMA table_info(products)").all<{ name: string }>();
   if (!productColumns.results.some((column) => column.name === "sale_price_updated_at")) {

@@ -77,3 +77,13 @@ export const authTokens = sqliteTable("auth_tokens", {
   usedAt: text("used_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [index("auth_tokens_user_idx").on(table.userId), index("auth_tokens_token_idx").on(table.tokenHash)]);
+
+export const paymentSettings = sqliteTable("payment_settings", {
+  id: integer("id").primaryKey(),
+  pixEnabled: integer("pix_enabled", { mode: "boolean" }).notNull().default(false),
+  pixKeyType: text("pix_key_type").notNull().default("cnpj"),
+  pixKey: text("pix_key").notNull().default(""),
+  pixReceiverName: text("pix_receiver_name").notNull().default(""),
+  pixCity: text("pix_city").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

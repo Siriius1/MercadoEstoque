@@ -5,8 +5,9 @@ import { formatDocument, formatPhone, maskEmail, normalizeEmail } from "./valida
 import SalesSection from "./sales-section";
 import SalesMovementsSection from "./movements-section";
 import EmployeesSection from "./employees-section";
+import PaymentSettingsSection from "./payment-settings-section";
 
-type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "funcionarios" | "movimentacoes" | "relatorios";
+type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "funcionarios" | "movimentacoes" | "relatorios" | "configuracoes";
 type Product = { id:number; sku:string; barcode:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; salePriceUpdatedAt:string|null; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
 type Supplier = { id:number; name:string; document:string; contact:string; email:string; phone:string; productCount:number; active:boolean };
 type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; saleId?:number|null; operatorName?:string; closureId?:number; periodStart?:string; periodEnd?:string; systemCashTotal?:number; declaredCashTotal?:number; difference?:number; cashSalesCount?:number; totalSalesCount?:number; createdAt:string };
@@ -116,7 +117,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
     { id:"vendas", icon:"▤", label:"Vendas" },
     { id:"painel", icon:"▦", label:"Painel" }, { id:"produtos", icon:"◇", label:"Produtos" },
     { id:"fornecedores", icon:"♣", label:"Fornecedores" }, { id:"funcionarios", icon:"♙", label:"Funcionários" }, { id:"movimentacoes", icon:"⇄", label:"Movimentações" },
-    { id:"relatorios", icon:"↗", label:"Relatórios" },
+    { id:"relatorios", icon:"↗", label:"Relatórios" }, { id:"configuracoes", icon:"⚙", label:"Configurações" },
   ] as const;
   const nav = isCashier ? adminNav.filter(item => item.id === "vendas") : adminNav;
 
@@ -139,6 +140,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
           {!isCashier && section === "funcionarios" && <EmployeesSection currentUser={user} />}
           {!isCashier && section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
           {!isCashier && section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
+          {!isCashier && section === "configuracoes" && <PaymentSettingsSection />}
         </>}
       </div>
     </main>

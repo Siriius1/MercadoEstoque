@@ -85,3 +85,30 @@ class CashClosureInput(BaseModel):
 class CashRegisterOpenInput(BaseModel):
     operatorName: str = Field(min_length=1, max_length=180)
     operatorEmail: str = Field(min_length=3, max_length=180)
+
+
+class PixPaymentSettingsInput(BaseModel):
+    enabled: bool = False
+    keyType: Literal["cpf", "cnpj", "telefone", "email", "aleatoria"] = "cnpj"
+    key: str = Field(default="", max_length=180)
+    receiverName: str = Field(default="", max_length=25)
+    city: str = Field(default="", max_length=15)
+
+    @field_validator("key")
+    @classmethod
+    def normalize_key(cls, value: str, info) -> str:
+        key_type = info.data.get("keyType", "cnpj")
+        text = value.strip()
+        if key_type in ("cpf", "cnpj"):
+            return "".join(character for character in text if character.isdigit())
+        if key_type == "email":
+            return "".join(text.lower().split())
+        if key_type == "telefone":
+            digits = "".join(character for character in text if character.isdigit())
+            return f"+{digits if digits.startswith('55') else f'55{digits}'}"
+        return "".join(text.split())
+
+    @field_validator("city", "receiverName")
+    @classmethod
+    def clean_owner_fields(cls, value: str) -> str:
+        return value.strip()
