@@ -13,6 +13,7 @@ type Movement = { id:number; productId:number; productName:string; sku:string; u
 type Summary = { totalProducts:number; lowStock:number; stockValue:number; retailValue:number; totalSuppliers:number };
 type DeleteTarget = { kind:"products"|"suppliers"; id:number; name:string; linkedCount:number };
 type ProductSortKey = "name"|"sku"|"supplier"|"cost"|"sale"|"stock"|"status";
+type Theme = "light"|"dark";
 
 const money = (value = 0) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const dateTime = (value:string) => { const normalized=value.replace(" ","T"); const hasTimezone=/Z$|[+-]\d{2}:\d{2}$/.test(normalized); return new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(hasTimezone?normalized:`${normalized}Z`)); };
@@ -35,6 +36,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<DeleteTarget|null>(null);
+  const [theme, setTheme] = useState<Theme>("light");
 
   const load = useCallback(async () => {
     try {
@@ -55,6 +57,21 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(""), 4500); return () => clearTimeout(timer); } }, [notice]);
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("mercado-theme");
+    const preferredTheme: Theme = savedTheme === "dark" || savedTheme === "light"
+      ? savedTheme
+      : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    setTheme(preferredTheme);
+    document.documentElement.dataset.theme = preferredTheme;
+  }, []);
+
+  function toggleTheme() {
+    const nextTheme: Theme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem("mercado-theme", nextTheme);
+  }
 
   const filteredProducts = useMemo(() => products.filter(p => `${p.name} ${p.sku} ${p.barcode} ${p.category} ${p.supplierName}`.toLowerCase().includes(search.toLowerCase())), [products, search]);
   const filteredSuppliers = useMemo(() => suppliers.filter(s => `${s.name} ${s.document} ${s.contact}`.toLowerCase().includes(search.toLowerCase())), [suppliers, search]);
@@ -111,7 +128,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
       <div className="sidebar-foot"><div className="avatar">{initials(user.name)}</div><div><strong>{user.name}</strong><small>{maskEmail(user.email)}</small></div><span className="online-dot" /></div>
     </aside>
     <main>
-      <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span>{!isCashier && <button className="icon-button" aria-label="Notificações">●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}</button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
+      <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className={`theme-toggle ${theme}`} type="button" onClick={toggleTheme} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Mudar para modo claro" : "Mudar para modo escuro"}><span className="theme-sun" aria-hidden="true">☀</span><span className="theme-moon" aria-hidden="true">☾</span></button>{!isCashier && <button className="icon-button" aria-label="Notificações">●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}</button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
       <div className="content">
         {notice && <div className="toast">{notice}</div>}
         {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
