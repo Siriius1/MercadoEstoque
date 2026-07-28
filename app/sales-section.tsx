@@ -33,7 +33,11 @@ type CashRegister = {
   openedAt: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_MERCADO_API_URL || "";
+const API_BASE =
+  process.env.NEXT_PUBLIC_MERCADO_API_URL ||
+  (typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "http://127.0.0.1:8000"
+    : "");
 const money = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const dateTime = (value: string) =>
@@ -209,7 +213,12 @@ export default function SalesSection({
         body: JSON.stringify({ operatorName: user.name, operatorEmail: user.email }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || "Não foi possível abrir o caixa.");
+      if (!response.ok) {
+        const message = result.detail === "Not Found"
+          ? "O serviço de abertura do caixa não foi encontrado."
+          : result.detail;
+        throw new Error(message || "Não foi possível abrir o caixa.");
+      }
       setCashRegister(result.register);
       setSuccess(`Caixa #${result.register.id} aberto. As vendas estão liberadas.`);
       searchRef.current?.focus();
