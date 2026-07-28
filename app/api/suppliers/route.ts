@@ -1,7 +1,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { products, suppliers } from "../../../db/schema";
-import { formatPhone, isValidEmail, normalizeEmail } from "../../validation";
+import { formatDocument, formatPhone, isValidDocument, isValidEmail, normalizeEmail } from "../../validation";
 import { requireApiUser } from "../../auth";
 
 export async function GET(request: Request) {
@@ -19,6 +19,7 @@ export async function POST(request: Request) {
   if (!name) return Response.json({ error: "Nome é obrigatório." }, { status: 400 });
   const email = normalizeEmail(body.email);
   if (email && !isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
-  const [supplier] = await (await getDb()).insert(suppliers).values({ name, document: String(body.document ?? ""), contact: String(body.contact ?? ""), email, phone: formatPhone(body.phone) }).returning();
+  if (!isValidDocument(body.document)) return Response.json({ error: "Informe um CPF com 11 números ou um CNPJ com 14 números." }, { status: 400 });
+  const [supplier] = await (await getDb()).insert(suppliers).values({ name, document: formatDocument(body.document), contact: String(body.contact ?? ""), email, phone: formatPhone(body.phone) }).returning();
   return Response.json({ supplier }, { status: 201 });
 }

@@ -33,6 +33,21 @@ class SupplierInput(BaseModel):
     email: str = Field(default="", max_length=180)
     phone: str = Field(default="", max_length=24)
 
+    @field_validator("document", mode="before")
+    @classmethod
+    def format_document(cls, value: object) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if any(not (character.isdigit() or character in ".-/ ") for character in text):
+            raise ValueError("O CPF ou CNPJ não pode conter letras.")
+        digits = "".join(character for character in text if character.isdigit())
+        if len(digits) == 11:
+            return f"{digits[:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:]}"
+        if len(digits) == 14:
+            return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+        raise ValueError("Informe um CPF com 11 números ou um CNPJ com 14 números.")
+
 
 class MovementInput(BaseModel):
     productId: int

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { suppliers } from "../../../../db/schema";
-import { formatPhone, isValidEmail, normalizeEmail } from "../../../validation";
+import { formatDocument, formatPhone, isValidDocument, isValidEmail, normalizeEmail } from "../../../validation";
 import { requireApiUser } from "../../../auth";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -11,7 +11,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const body = await request.json() as Record<string, unknown>;
   const email = normalizeEmail(body.email);
   if (email && !isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
-  const [supplier] = await (await getDb()).update(suppliers).set({ name: String(body.name ?? "").trim(), document: String(body.document ?? ""), contact: String(body.contact ?? ""), email, phone: formatPhone(body.phone), active: body.active !== false, updatedAt: new Date().toISOString() }).where(eq(suppliers.id, Number(id))).returning();
+  if (!isValidDocument(body.document)) return Response.json({ error: "Informe um CPF com 11 números ou um CNPJ com 14 números." }, { status: 400 });
+  const [supplier] = await (await getDb()).update(suppliers).set({ name: String(body.name ?? "").trim(), document: formatDocument(body.document), contact: String(body.contact ?? ""), email, phone: formatPhone(body.phone), active: body.active !== false, updatedAt: new Date().toISOString() }).where(eq(suppliers.id, Number(id))).returning();
   return supplier ? Response.json({ supplier }) : Response.json({ error: "Fornecedor não encontrado." }, { status: 404 });
 }
 

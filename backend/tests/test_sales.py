@@ -28,6 +28,23 @@ def create_supplier(client: TestClient) -> int:
     return response.json()["supplier"]["id"]
 
 
+def test_supplier_document_accepts_only_complete_cpf_or_cnpj() -> None:
+    reset_database()
+    with TestClient(app) as client:
+        invalid = client.post(
+            "/api/suppliers",
+            json={"name": "Fornecedor inválido", "document": "12345678901abc"},
+        )
+        assert invalid.status_code == 422
+
+        valid = client.post(
+            "/api/suppliers",
+            json={"name": "Fornecedor válido", "document": "12345678901"},
+        )
+        assert valid.status_code == 201
+        assert valid.json()["supplier"]["document"] == "123.456.789-01"
+
+
 def open_cash_register(
     client: TestClient,
     operator_name: str = "Operador Teste",
