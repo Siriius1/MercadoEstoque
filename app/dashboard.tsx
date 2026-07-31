@@ -118,6 +118,11 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
     { id:"relatorios", icon:"↗", label:"Relatórios" }, { id:"configuracoes", icon:"⚙", label:"Configurações" },
   ] as const;
   const nav = isCashier ? adminNav.filter(item => item.id === "vendas") : adminNav;
+  const pendingText = summary.lowStock === 0
+    ? "Não existem pendências"
+    : summary.lowStock === 1
+      ? "Existe 1 pendência"
+      : `Existem ${summary.lowStock} pendências`;
 
   return <div className="app-shell">
     {menuOpen && <button className="menu-overlay" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
@@ -127,7 +132,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
       <div className="sidebar-foot"><div className="avatar">{initials(user.name)}</div><div><strong>{user.name}</strong><small>{maskEmail(user.email)}</small></div><span className="online-dot" /></div>
     </aside>
     <main>
-      <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className={`theme-toggle ${theme}`} type="button" onClick={toggleTheme} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Mudar para modo claro" : "Mudar para modo escuro"}><span className="theme-sun" aria-hidden="true">☀</span><span className="theme-moon" aria-hidden="true">☾</span></button>{!isCashier && <button className="icon-button" aria-label="Notificações">●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}</button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
+      <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className={`theme-toggle ${theme}`} type="button" onClick={toggleTheme} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Mudar para modo claro" : "Mudar para modo escuro"}><span className="theme-sun" aria-hidden="true">☀</span><span className="theme-moon" aria-hidden="true">☾</span></button>{!isCashier && <button className="icon-button" aria-label={pendingText}>●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}<span className="notification-tooltip" role="tooltip">{pendingText}</span></button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
       <div className="content">
         {notice && <div className="toast">{notice}</div>}
         {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
