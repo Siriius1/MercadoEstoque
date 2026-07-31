@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 
-type MailKind = "verify" | "reset";
+type MailKind = "verify" | "reset" | "invite";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character);
@@ -12,10 +12,13 @@ export async function sendAuthEmail({ to, name, url, kind }: { to: string; name:
   const from = bindings.AUTH_FROM_EMAIL ?? "Mercado+ <acesso@mercadoestoque.com.br>";
   if (!apiKey) return { sent: false, previewUrl: url };
 
-  const verifying = kind === "verify";
-  const subject = verifying ? "Confirme sua conta no Mercado+" : "Altere sua senha do Mercado+";
-  const action = verifying ? "Confirmar minha conta" : "Alterar minha senha";
-  const intro = verifying ? "Sua conta foi criada. Confirme seu e-mail para liberar o acesso ao estoque." : "Recebemos uma solicitação para alterar sua senha. Se não foi você, ignore esta mensagem.";
+  const subject = kind === "verify" ? "Confirme sua conta no Mercado+" : kind === "invite" ? "Você recebeu acesso ao Mercado+" : "Altere sua senha do Mercado+";
+  const action = kind === "verify" ? "Confirmar minha conta" : kind === "invite" ? "Ativar meu acesso" : "Alterar minha senha";
+  const intro = kind === "verify"
+    ? "Sua conta foi criada. Confirme seu e-mail para liberar o acesso ao estoque."
+    : kind === "invite"
+      ? "O administrador cadastrou você na equipe. Crie sua senha para ativar o acesso ao sistema."
+      : "Recebemos uma solicitação para alterar sua senha. Se não foi você, ignore esta mensagem.";
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },

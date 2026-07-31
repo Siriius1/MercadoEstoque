@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-type Mode = "login" | "register" | "forgot" | "reset" | "verify";
+type Mode = "login" | "register" | "forgot" | "reset" | "verify" | "invite";
 
 const normalizeEmailInput = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 
@@ -12,8 +12,8 @@ declare global {
   interface Window { google?: { accounts: GoogleAccounts } }
 }
 
-export default function AuthScreen({ initialMode, token, googleClientId }: { initialMode: Mode; token: string; googleClientId: string }) {
-  const [message, setMessage] = useState("");
+export default function AuthScreen({ initialMode, token, googleClientId, registrationOpen, welcome }: { initialMode: Mode; token: string; googleClientId: string; registrationOpen: boolean; welcome: boolean }) {
+  const [message, setMessage] = useState(welcome ? "Acesso ativado. Entre com sua nova senha ou com o Google." : "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(initialMode === "verify");
   const [previewUrl, setPreviewUrl] = useState("");
@@ -57,6 +57,7 @@ export default function AuthScreen({ initialMode, token, googleClientId }: { ini
       const result = await response.json() as { error?: string; message?: string; previewUrl?: string };
       if (!response.ok) throw new Error(result.error || "Não foi possível concluir.");
       if (endpoint.endsWith("/login") || endpoint.endsWith("/google")) { window.location.href = "/"; return; }
+      if (endpoint.endsWith("/accept-invite")) { window.location.href = "/?auth=login&welcome=1"; return; }
       setMessage(result.message ?? "Concluído com sucesso.");
       setPreviewUrl(result.previewUrl ?? "");
     } catch (caught) {
@@ -71,16 +72,16 @@ export default function AuthScreen({ initialMode, token, googleClientId }: { ini
     const data = Object.fromEntries(new FormData(event.currentTarget));
     const password = String(data.password ?? "");
     const confirmation = String(data.confirmation ?? "");
-    if ((initialMode === "register" || initialMode === "reset") && password !== confirmation) {
+    if ((initialMode === "register" || initialMode === "reset" || initialMode === "invite") && password !== confirmation) {
       setError("As senhas não são iguais.");
       return;
     }
-    const endpoint = initialMode === "register" ? "/api/auth/register" : initialMode === "forgot" ? "/api/auth/forgot-password" : initialMode === "reset" ? "/api/auth/reset-password" : "/api/auth/login";
+    const endpoint = initialMode === "register" ? "/api/auth/register" : initialMode === "forgot" ? "/api/auth/forgot-password" : initialMode === "reset" ? "/api/auth/reset-password" : initialMode === "invite" ? "/api/auth/accept-invite" : "/api/auth/login";
     await request(endpoint, { ...data, token });
   }
 
-  const title = initialMode === "register" ? "Criar sua conta" : initialMode === "forgot" ? "Recuperar senha" : initialMode === "reset" ? "Criar nova senha" : initialMode === "verify" ? "Confirmar e-mail" : "Acessar o sistema";
-  const description = initialMode === "register" ? "Cadastre-se para administrar o estoque com segurança." : initialMode === "forgot" ? "Enviaremos um link seguro para o seu e-mail." : initialMode === "reset" ? "Escolha uma nova senha para sua conta." : initialMode === "verify" ? "Estamos validando o link enviado ao seu e-mail." : "Entre com seu e-mail e sua senha.";
+  const title = initialMode === "register" ? "Criar sua conta" : initialMode === "forgot" ? "Recuperar senha" : initialMode === "reset" ? "Criar nova senha" : initialMode === "invite" ? "Ativar meu acesso" : initialMode === "verify" ? "Confirmar e-mail" : "Acessar o sistema";
+  const description = initialMode === "register" ? "Crie a primeira conta de administrador do estabelecimento." : initialMode === "forgot" ? "Enviaremos um link seguro para o seu e-mail." : initialMode === "reset" ? "Escolha uma nova senha para sua conta." : initialMode === "invite" ? "Você foi convidado para a equipe. Defina sua senha pessoal." : initialMode === "verify" ? "Estamos validando o link enviado ao seu e-mail." : "Entre com seu e-mail e sua senha.";
 
   return <main className="auth-page">
     <section className="auth-brand">
@@ -100,15 +101,15 @@ export default function AuthScreen({ initialMode, token, googleClientId }: { ini
           <form onSubmit={submit}>
             {initialMode === "register" && <label>Nome completo<input name="name" required autoComplete="name" placeholder="Seu nome"/></label>}
             {(initialMode === "login" || initialMode === "register" || initialMode === "forgot") && <label>E-mail<input name="email" type="email" required autoComplete="email" placeholder="voce@empresa.com.br" onInput={event => { event.currentTarget.value = normalizeEmailInput(event.currentTarget.value); }}/></label>}
-            {(initialMode === "login" || initialMode === "register" || initialMode === "reset") && <label>Senha<input name="password" type="password" required minLength={8} autoComplete={initialMode === "login" ? "current-password" : "new-password"} placeholder="Mínimo de 8 caracteres"/></label>}
-            {(initialMode === "register" || initialMode === "reset") && <label>Confirmar senha<input name="confirmation" type="password" required minLength={8} autoComplete="new-password" placeholder="Digite a senha novamente"/></label>}
+            {(initialMode === "login" || initialMode === "register" || initialMode === "reset" || initialMode === "invite") && <label>Senha<input name="password" type="password" required minLength={8} autoComplete={initialMode === "login" ? "current-password" : "new-password"} placeholder="Mínimo de 8 caracteres"/></label>}
+            {(initialMode === "register" || initialMode === "reset" || initialMode === "invite") && <label>Confirmar senha<input name="confirmation" type="password" required minLength={8} autoComplete="new-password" placeholder="Digite a senha novamente"/></label>}
             {error && <div className="auth-error">{error}</div>}
             {message && <div className="auth-success">{message}</div>}
             {previewUrl && <a className="auth-preview" href={previewUrl}>Abrir e-mail de teste local →</a>}
-            <button className="auth-submit" disabled={busy}>{busy ? "Aguarde..." : initialMode === "register" ? "Criar conta" : initialMode === "forgot" ? "Enviar link" : initialMode === "reset" ? "Alterar senha" : "Entrar"}</button>
+            <button className="auth-submit" disabled={busy}>{busy ? "Aguarde..." : initialMode === "register" ? "Criar conta" : initialMode === "forgot" ? "Enviar link" : initialMode === "reset" ? "Alterar senha" : initialMode === "invite" ? "Ativar acesso" : "Entrar"}</button>
           </form>}
         <div className="auth-links">
-          {initialMode === "login" && <><a href="/?auth=forgot">Esqueci minha senha</a><span>Não possui uma conta? <a href="/?auth=register">Criar conta</a></span></>}
+          {initialMode === "login" && <><a href="/?auth=forgot">Esqueci minha senha</a>{registrationOpen && <span>Primeiro acesso? <a href="/?auth=register">Criar conta do proprietário</a></span>}</>}
           {initialMode !== "login" && <a href="/">← Voltar para o login</a>}
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { getD1 } from "../../../db";
-import { getSessionUser, hashPassword } from "../../auth";
+import { getSessionUser, randomToken } from "../../auth";
+import { createEmployeeInvite } from "../../employee-invite";
 import { isValidEmail, normalizeEmail } from "../../validation";
 
 async function requireAdmin(request: Request) {
@@ -23,15 +24,19 @@ export async function POST(request: Request) {
   const body = await request.json() as Record<string, unknown>;
   const name = String(body.name ?? "").trim();
   const email = normalizeEmail(body.email);
-  const password = String(body.password ?? "");
   const role = body.role === "admin" ? "admin" : "cashier";
   if (name.length < 2) return Response.json({ error: "Informe o nome completo." }, { status: 400 });
   if (!isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
-  if (password.length < 8) return Response.json({ error: "A senha precisa ter pelo menos 8 caracteres." }, { status: 400 });
   const d1 = await getD1();
   const existing = await d1.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
   if (existing) return Response.json({ error: "Este e-mail já está cadastrado." }, { status: 409 });
-  const passwordHash = await hashPassword(password);
-  const employee = await d1.prepare("INSERT INTO users (name, email, password_hash, email_verified_at, role) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?) RETURNING id, name, email, role").bind(name, email, passwordHash, role).first();
-  return Response.json({ employee }, { status: 201 });
+  const employee = await d1.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?) RETURNING id, name, email, role").bind(name, email, `invite_pending$${randomToken()}`, role).first<{ id: number; name: string; email: string; role: string }>();
+  if (!employee) return Response.json({ error: "Não foi possível criar o funcionário." }, { status: 500 });
+  try {
+    const mail = await createEmployeeInvite({ d1, userId: employee.id, name, email, origin: new URL(request.url).origin });
+    return Response.json({ employee, previewUrl: mail.previewUrl }, { status: 201 });
+  } catch (error) {
+    await d1.prepare("DELETE FROM users WHERE id = ?").bind(employee.id).run();
+    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível enviar o convite." }, { status: 502 });
+  }
 }

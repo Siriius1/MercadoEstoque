@@ -26,6 +26,7 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
   const [editing, setEditing] = useState<Employee | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -63,8 +64,22 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
       return;
     }
     setEditing(undefined);
-    setNotice(editing ? "Funcionário atualizado." : "Funcionário cadastrado e liberado para acessar.");
+    setPreviewUrl(result.previewUrl || "");
+    setNotice(editing ? "Funcionário atualizado." : "Funcionário cadastrado. O acesso será liberado quando ele aceitar o convite.");
     await load();
+  }
+
+  async function resendInvite(employee: Employee) {
+    setError("");
+    setPreviewUrl("");
+    const response = await fetch(`/api/employees/${employee.id}/invite`, { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) {
+      setError(result.error || "Não foi possível reenviar o convite.");
+      return;
+    }
+    setNotice(`Convite reenviado para ${employee.name}.`);
+    setPreviewUrl(result.previewUrl || "");
   }
 
   async function remove(employee: Employee) {
@@ -88,7 +103,7 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
       <div><small>EQUIPE</small><h1>Funcionários</h1><p>Cadastre e gerencie os acessos da sua equipe.</p></div>
       <button className="primary" onClick={() => { setError(""); setEditing(null); }}>+ Novo funcionário</button>
     </div>
-    {notice && <div className="employee-notice">{notice}</div>}
+    {notice && <div className="employee-notice"><span>{notice}</span>{previewUrl && <button type="button" onClick={async () => { await navigator.clipboard.writeText(previewUrl); setNotice("Link do convite copiado. Abra-o em uma janela anônima para testar."); }}>Copiar convite de teste</button>}</div>}
     {error && editing === undefined && <p className="form-error">{error}</p>}
     <div className="toolbar">
       <label className="search"><span>⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar funcionário, e-mail ou função..." /></label>
@@ -101,9 +116,9 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
           <td><div className="product-cell"><span className="mini-avatar">{initials(employee.name)}</span><div><strong>{employee.name}</strong><small>{employee.email === currentUser.email ? "Você" : "Membro da equipe"}</small></div></div></td>
           <td>{maskEmail(employee.email)}</td>
           <td><span className={`employee-role ${employee.role}`}>{roleLabel(employee.role)}</span></td>
-          <td><span className={`status ${employee.emailVerifiedAt ? "ok" : "low"}`}>{employee.emailVerifiedAt ? "Liberada" : "Pendente"}</span></td>
+          <td><span className={`status ${employee.emailVerifiedAt ? "ok" : "low"}`}>{employee.emailVerifiedAt ? "Ativa" : "Convite pendente"}</span></td>
           <td>{new Intl.DateTimeFormat("pt-BR").format(new Date(employee.createdAt.replace(" ", "T") + (employee.createdAt.includes("Z") ? "" : "Z")))}</td>
-          <td><div className="row-actions"><button onClick={() => { setError(""); setEditing(employee); }} title="Editar funcionário">✎</button><button className="delete-button" disabled={employee.email === currentUser.email} onClick={() => void remove(employee)} title={employee.email === currentUser.email ? "Você não pode excluir sua própria conta" : "Excluir funcionário"}>Excluir</button></div></td>
+          <td><div className="row-actions">{!employee.emailVerifiedAt && <button className="invite-again-button" onClick={() => void resendInvite(employee)} title="Reenviar convite">Reenviar</button>}<button onClick={() => { setError(""); setEditing(employee); }} title="Editar funcionário">✎</button><button className="delete-button" disabled={employee.email === currentUser.email} onClick={() => void remove(employee)} title={employee.email === currentUser.email ? "Você não pode excluir sua própria conta" : "Excluir funcionário"}>Excluir</button></div></td>
         </tr>)}</tbody>
       </table>
       {!loading && !filtered.length && <div className="empty"><span>♙</span><p>Nenhum funcionário encontrado.</p></div>}
@@ -114,13 +129,13 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
         <button className="modal-close" onClick={() => setEditing(undefined)}>×</button>
         <small>Mercado+</small>
         <h2>{editing ? "Editar funcionário" : "Novo funcionário"}</h2>
-        <p>{editing ? "Atualize os dados e as permissões desta conta." : "Crie o acesso que o funcionário usará para entrar no sistema."}</p>
+        <p>{editing ? "Atualize o nome e as permissões desta conta." : "Cadastre o funcionário. Ele criará a própria senha pelo convite."}</p>
         <form onSubmit={save}>
           <div className="form-grid">
             <label className="span-2">Nome completo<input name="name" required minLength={2} defaultValue={editing?.name} /></label>
-            <label>E-mail<input name="email" type="email" required defaultValue={editing?.email} onBlur={event => { event.currentTarget.value = normalizeEmail(event.currentTarget.value); }} /></label>
+            <label>E-mail<input name="email" type="email" required readOnly={Boolean(editing)} className={editing ? "readonly-code" : ""} defaultValue={editing?.email} onBlur={event => { event.currentTarget.value = normalizeEmail(event.currentTarget.value); }} /></label>
             <label>Função<select name="role" required defaultValue={editing?.role || "cashier"}><option value="cashier">Operador de caixa</option><option value="admin">Administrador</option></select></label>
-            <label className="span-2">{editing ? "Nova senha (opcional)" : "Senha inicial"}<input name="password" type="password" minLength={8} required={!editing} autoComplete="new-password" placeholder={editing ? "Deixe vazio para manter a senha atual" : "Mínimo de 8 caracteres"} /></label>
+            {!editing && <div className="employee-invite-info span-2"><strong>✉ Convite seguro</strong><p>O funcionário receberá um link válido por 48 horas para criar a própria senha. Ele também poderá entrar com o Google usando este mesmo e-mail.</p></div>}
           </div>
           {error && <p className="form-error">{error}</p>}
           <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditing(undefined)}>Cancelar</button><button className="primary" type="submit">Salvar funcionário</button></div>

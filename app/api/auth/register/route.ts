@@ -13,6 +13,8 @@ export async function POST(request: Request) {
   if (password.length < 8) return Response.json({ error: "A senha precisa ter pelo menos 8 caracteres." }, { status: 400 });
 
   const d1 = await getD1();
+  const owner = await d1.prepare("SELECT id FROM users WHERE role = 'admin' AND email_verified_at IS NOT NULL LIMIT 1").first();
+  if (owner) return Response.json({ error: "O cadastro público está encerrado. Peça ao administrador para criar seu acesso." }, { status: 403 });
   const existing = await d1.prepare("SELECT id, email_verified_at FROM users WHERE email = ?").bind(email).first<{ id: number; email_verified_at: string | null }>();
   if (existing?.email_verified_at) return Response.json({ error: "Este e-mail já possui uma conta." }, { status: 409 });
   const passwordHash = await hashPassword(password);

@@ -21,9 +21,7 @@ export async function POST(request: Request) {
         await d1.prepare("UPDATE users SET google_sub = ?, email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(profile.sub, existing.id).run();
         user = existing;
       } else {
-        const created = await d1.prepare("INSERT INTO users (name, email, password_hash, google_sub, email_verified_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id").bind(profile.name, profile.email, `google_only$${randomToken()}`, profile.sub).first<{ id: number }>();
-        if (!created) throw new Error("Não foi possível criar a conta Google.");
-        user = { id: created.id, google_sub: profile.sub };
+        return Response.json({ error: "Este e-mail ainda não possui acesso. Peça ao administrador para cadastrá-lo na equipe." }, { status: 403 });
       }
     }
     const token = randomToken();

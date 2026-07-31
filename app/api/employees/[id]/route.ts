@@ -1,6 +1,5 @@
 import { getD1 } from "../../../../db";
-import { getSessionUser, hashPassword } from "../../../auth";
-import { isValidEmail, normalizeEmail } from "../../../validation";
+import { getSessionUser } from "../../../auth";
 
 async function requireAdmin(request: Request) {
   const user = await getSessionUser(request);
@@ -17,27 +16,16 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   if (!Number.isInteger(employeeId)) return Response.json({ error: "Funcionário inválido." }, { status: 400 });
   const body = await request.json() as Record<string, unknown>;
   const name = String(body.name ?? "").trim();
-  const email = normalizeEmail(body.email);
-  const password = String(body.password ?? "");
   const role = body.role === "admin" ? "admin" : "cashier";
   if (name.length < 2) return Response.json({ error: "Informe o nome completo." }, { status: 400 });
-  if (!isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
-  if (password && password.length < 8) return Response.json({ error: "A nova senha precisa ter pelo menos 8 caracteres." }, { status: 400 });
   const d1 = await getD1();
-  const duplicate = await d1.prepare("SELECT id FROM users WHERE email = ? AND id <> ?").bind(email, employeeId).first();
-  if (duplicate) return Response.json({ error: "Este e-mail já está cadastrado." }, { status: 409 });
   const currentEmployee = await d1.prepare("SELECT role FROM users WHERE id = ?").bind(employeeId).first<{ role: string }>();
   if (!currentEmployee) return Response.json({ error: "Funcionário não encontrado." }, { status: 404 });
   if (currentEmployee.role === "admin" && role !== "admin") {
     const admins = await d1.prepare("SELECT COUNT(*) AS total FROM users WHERE role = 'admin'").first<{ total: number }>();
     if ((admins?.total ?? 0) <= 1) return Response.json({ error: "O sistema precisa manter pelo menos um administrador." }, { status: 400 });
   }
-  if (password) {
-    const passwordHash = await hashPassword(password);
-    await d1.prepare("UPDATE users SET name = ?, email = ?, role = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(name, email, role, passwordHash, employeeId).run();
-  } else {
-    await d1.prepare("UPDATE users SET name = ?, email = ?, role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(name, email, role, employeeId).run();
-  }
+  await d1.prepare("UPDATE users SET name = ?, role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(name, role, employeeId).run();
   const employee = await d1.prepare("SELECT id, name, email, role, email_verified_at AS emailVerifiedAt, created_at AS createdAt FROM users WHERE id = ?").bind(employeeId).first();
   if (!employee) return Response.json({ error: "Funcionário não encontrado." }, { status: 404 });
   return Response.json({ employee });

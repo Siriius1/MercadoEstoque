@@ -72,7 +72,7 @@ export const authTokens = sqliteTable("auth_tokens", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull().unique(),
-  type: text("type", { enum: ["verify_email", "reset_password"] }).notNull(),
+  type: text("type", { enum: ["verify_email", "reset_password", "employee_invite"] }).notNull(),
   expiresAt: text("expires_at").notNull(),
   usedAt: text("used_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
