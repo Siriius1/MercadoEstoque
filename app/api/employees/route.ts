@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const access = await requireAdmin(request);
   if (access.response) return access.response;
   const d1 = await getD1();
-  const result = await d1.prepare("SELECT id, name, email, role, email_verified_at AS emailVerifiedAt, created_at AS createdAt FROM users ORDER BY name COLLATE NOCASE").all();
+  const result = await d1.prepare("SELECT id, name, email, role, email_verified_at AS emailVerifiedAt, created_at AS createdAt FROM users WHERE company_id = ? ORDER BY name COLLATE NOCASE").bind(access.user!.companyId).all();
   return Response.json({ employees: result.results });
 }
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const d1 = await getD1();
   const existing = await d1.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
   if (existing) return Response.json({ error: "Este e-mail já está cadastrado." }, { status: 409 });
-  const employee = await d1.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?) RETURNING id, name, email, role").bind(name, email, `invite_pending$${randomToken()}`, role).first<{ id: number; name: string; email: string; role: string }>();
+  const employee = await d1.prepare("INSERT INTO users (company_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?) RETURNING id, name, email, role").bind(access.user!.companyId, name, email, `invite_pending$${randomToken()}`, role).first<{ id: number; name: string; email: string; role: string }>();
   if (!employee) return Response.json({ error: "Não foi possível criar o funcionário." }, { status: 500 });
   try {
     const mail = await createEmployeeInvite({ d1, userId: employee.id, name, email, origin: new URL(request.url).origin });

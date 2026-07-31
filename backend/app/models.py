@@ -11,6 +11,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -26,6 +27,7 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
     name: Mapped[str] = mapped_column(String(180))
     document: Mapped[str] = mapped_column(String(30), default="")
     contact: Mapped[str] = mapped_column(String(120), default="")
@@ -43,12 +45,15 @@ class Product(Base):
     __table_args__ = (
         CheckConstraint("current_stock >= 0", name="products_stock_nonnegative"),
         CheckConstraint("minimum_stock >= 0", name="products_minimum_nonnegative"),
+        UniqueConstraint("company_key", "sku", name="products_company_sku_unique"),
+        UniqueConstraint("company_key", "barcode", name="products_company_barcode_unique"),
         Index("products_name_idx", "name"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    sku: Mapped[str] = mapped_column(String(20), unique=True, index=True)
-    barcode: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
+    sku: Mapped[str] = mapped_column(String(20), index=True)
+    barcode: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(180), index=True)
     category: Mapped[str] = mapped_column(String(100), default="Mercearia")
     unit: Mapped[str] = mapped_column(String(12), default="un")
@@ -75,6 +80,7 @@ class Sale(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
     status: Mapped[str] = mapped_column(String(20), default="completed")
     payment_method: Mapped[str] = mapped_column(String(20))
     total: Mapped[Decimal] = mapped_column(money_type)
@@ -92,6 +98,7 @@ class SaleItem(Base):
     __tablename__ = "sale_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
     sale_id: Mapped[int] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), index=True)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
     product_name: Mapped[str] = mapped_column(String(180))
@@ -111,6 +118,7 @@ class CashClosure(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
     operator_name: Mapped[str] = mapped_column(String(180))
     operator_email: Mapped[str] = mapped_column(String(180))
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -131,6 +139,7 @@ class CashRegister(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
     operator_name: Mapped[str] = mapped_column(String(180))
     operator_email: Mapped[str] = mapped_column(String(180))
     status: Mapped[str] = mapped_column(String(20), default="open")
@@ -144,7 +153,8 @@ class CashRegister(Base):
 class PaymentSettings(Base):
     __tablename__ = "payment_settings"
 
-    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", unique=True, index=True)
     pix_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     pix_key_type: Mapped[str] = mapped_column(String(20), default="cnpj")
     pix_key: Mapped[str] = mapped_column(String(180), default="")
@@ -161,6 +171,7 @@ class StockMovement(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id", ondelete="SET NULL"), nullable=True, index=True)
     type: Mapped[str] = mapped_column(String(20))

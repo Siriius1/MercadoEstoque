@@ -11,7 +11,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const employeeId = Number(id);
   if (!Number.isInteger(employeeId)) return Response.json({ error: "Funcionário inválido." }, { status: 400 });
   const d1 = await getD1();
-  const employee = await d1.prepare("SELECT id, name, email, email_verified_at FROM users WHERE id = ?").bind(employeeId).first<{ id: number; name: string; email: string; email_verified_at: string | null }>();
+  const employee = await d1.prepare("SELECT id, name, email, email_verified_at FROM users WHERE id = ? AND company_id = ?").bind(employeeId, user.companyId).first<{ id: number; name: string; email: string; email_verified_at: string | null }>();
   if (!employee) return Response.json({ error: "Funcionário não encontrado." }, { status: 404 });
   if (employee.email_verified_at) return Response.json({ error: "Este funcionário já possui acesso ativo." }, { status: 400 });
 

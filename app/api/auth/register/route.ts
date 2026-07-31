@@ -13,16 +13,16 @@ export async function POST(request: Request) {
   if (password.length < 8) return Response.json({ error: "A senha precisa ter pelo menos 8 caracteres." }, { status: 400 });
 
   const d1 = await getD1();
-  const owner = await d1.prepare("SELECT id FROM users WHERE role = 'admin' AND email_verified_at IS NOT NULL LIMIT 1").first();
-  if (owner) return Response.json({ error: "O cadastro público está encerrado. Peça ao administrador para criar seu acesso." }, { status: 403 });
-  const existing = await d1.prepare("SELECT id, email_verified_at FROM users WHERE email = ?").bind(email).first<{ id: number; email_verified_at: string | null }>();
+  const existing = await d1.prepare("SELECT id, company_id, email_verified_at FROM users WHERE email = ?").bind(email).first<{ id: number; company_id: number; email_verified_at: string | null }>();
   if (existing?.email_verified_at) return Response.json({ error: "Este e-mail já possui uma conta." }, { status: 409 });
   const passwordHash = await hashPassword(password);
   let userId = existing?.id;
   if (userId) {
     await d1.prepare("UPDATE users SET name = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(name, passwordHash, userId).run();
   } else {
-    const created = await d1.prepare("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?) RETURNING id").bind(name, email, passwordHash).first<{ id: number }>();
+    const company = await d1.prepare("INSERT INTO companies (public_key, name) VALUES (?, ?) RETURNING id").bind(randomToken(24), `Mercado de ${name}`).first<{ id: number }>();
+    if (!company) return Response.json({ error: "Não foi possível criar o estabelecimento." }, { status: 500 });
+    const created = await d1.prepare("INSERT INTO users (company_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, 'admin') RETURNING id").bind(company.id, name, email, passwordHash).first<{ id: number }>();
     userId = created?.id;
   }
   if (!userId) return Response.json({ error: "Não foi possível criar a conta." }, { status: 500 });

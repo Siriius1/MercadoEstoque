@@ -67,6 +67,20 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
     }
   }
 
+  async function enterDemo() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/auth/demo", { method: "POST" });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Não foi possível abrir a demonstração.");
+      window.location.href = "/";
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível abrir a demonstração.");
+      setBusy(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));
@@ -96,7 +110,15 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
         <span className="auth-eyebrow">BEM-VINDO AO MERCADO+</span>
         <h2>{title}</h2>
         <p>{description}</p>
-        {initialMode === "login" && <><div className="google-login">{googleClientId ? <div ref={googleButton}/> : <button type="button" disabled title="Falta configurar o identificador do Google">Continuar com Google</button>}</div><div className="auth-divider"><span>ou entre com e-mail</span></div></>}
+        {initialMode === "login" && <>
+          <button className="auth-demo-button" type="button" disabled={busy} onClick={enterDemo}>
+            <strong>Testar demonstração</strong>
+            <small>Acesso completo de administrador, sem cadastro</small>
+          </button>
+          <div className="auth-divider"><span>ou acesse sua conta</span></div>
+          <div className="google-login">{googleClientId ? <div ref={googleButton}/> : <button type="button" disabled title="Falta configurar o identificador do Google">Continuar com Google</button>}</div>
+          <div className="auth-divider"><span>ou entre com e-mail</span></div>
+        </>}
         {initialMode === "verify" ? <div className="auth-result">{busy ? "Confirmando..." : message || error}</div> :
           <form onSubmit={submit}>
             {initialMode === "register" && <label>Nome completo<input name="name" required autoComplete="name" placeholder="Seu nome"/></label>}

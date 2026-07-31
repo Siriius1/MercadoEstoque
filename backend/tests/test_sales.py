@@ -28,9 +28,46 @@ def create_supplier(client: TestClient) -> int:
     return response.json()["supplier"]["id"]
 
 
+def test_companies_have_independent_products_and_numbering() -> None:
+    reset_database()
+    with (
+        TestClient(app, headers={"X-Mercado-Tenant": "company-a"}) as company_a,
+        TestClient(app, headers={"X-Mercado-Tenant": "company-b"}) as company_b,
+    ):
+        supplier_a = create_supplier(company_a)
+        first_a = company_a.post(
+            "/api/products",
+            json={
+                "name": "Produto da empresa A",
+                "costPrice": 5,
+                "salePrice": 10,
+                "currentStock": 8,
+                "supplierId": supplier_a,
+            },
+        )
+        assert first_a.status_code == 201
+        assert first_a.json()["product"]["sku"] == "#0001"
+        assert company_b.get("/api/products").json()["products"] == []
+
+        supplier_b = create_supplier(company_b)
+        first_b = company_b.post(
+            "/api/products",
+            json={
+                "name": "Produto da empresa B",
+                "costPrice": 3,
+                "salePrice": 7,
+                "currentStock": 4,
+                "supplierId": supplier_b,
+            },
+        )
+        assert first_b.status_code == 201
+        assert first_b.json()["product"]["sku"] == "#0001"
+        assert [item["name"] for item in company_a.get("/api/products").json()["products"]] == ["Produto da empresa A"]
+
+
 def test_supplier_document_accepts_only_complete_cpf_or_cnpj() -> None:
     reset_database()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
         invalid = client.post(
             "/api/suppliers",
             json={"name": "Fornecedor inválido", "document": "12345678901abc"},
@@ -47,7 +84,7 @@ def test_supplier_document_accepts_only_complete_cpf_or_cnpj() -> None:
 
 def test_pix_settings_are_validated_and_persisted() -> None:
     reset_database()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
         default_settings = client.get("/api/payment-settings/pix").json()["settings"]
         assert default_settings["enabled"] is False
 
@@ -93,7 +130,7 @@ def open_cash_register(
 
 def test_product_requires_supplier_prices_and_initial_stock() -> None:
     reset_database()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
         response = client.post(
             "/api/products",
             json={
@@ -109,7 +146,7 @@ def test_product_requires_supplier_prices_and_initial_stock() -> None:
 
 def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
     reset_database()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
         supplier_id = create_supplier(client)
         product_response = client.post(
             "/api/products",
@@ -227,7 +264,7 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
 
 def test_one_insufficient_item_rolls_back_every_item() -> None:
     reset_database()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
         supplier_id = create_supplier(client)
         first = client.post(
             "/api/products",
@@ -275,7 +312,7 @@ def test_one_insufficient_item_rolls_back_every_item() -> None:
 
 def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
     reset_database()
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
         supplier_id = create_supplier(client)
         product = client.post(
             "/api/products",

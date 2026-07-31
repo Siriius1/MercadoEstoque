@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PixPayment from "./pix-payment";
 import { PixSettings } from "./pix";
-import { API_BASE } from "./api-base";
+import { mercadoApiFetch } from "./api-base";
 
 export type SalesProduct = {
   id: number;
@@ -48,10 +48,12 @@ function CartIcon({ large = false }: { large?: boolean }) {
 export default function SalesSection({
   products,
   user,
+  companyKey,
   onSaleCompleted,
 }: {
   products: SalesProduct[];
   user: { name: string; email: string };
+  companyKey: string;
   onSaleCompleted: () => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
@@ -162,7 +164,7 @@ export default function SalesSection({
     setSubmitting(true);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/api/sales`, {
+      const response = await mercadoApiFetch("/api/sales", companyKey, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -192,7 +194,7 @@ export default function SalesSection({
     setSubmitting(true);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/api/payment-settings/pix`);
+      const response = await mercadoApiFetch("/api/payment-settings/pix", companyKey);
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || result.error || "Não foi possível carregar o PIX.");
       if (!result.settings?.enabled) {
@@ -209,8 +211,9 @@ export default function SalesSection({
 
   async function loadCashRegisterStatus() {
     try {
-      const response = await fetch(
-        `${API_BASE}/api/cash-registers/status?operatorEmail=${encodeURIComponent(user.email)}`,
+      const response = await mercadoApiFetch(
+        `/api/cash-registers/status?operatorEmail=${encodeURIComponent(user.email)}`,
+        companyKey,
       );
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || "Não foi possível verificar o caixa.");
@@ -226,7 +229,7 @@ export default function SalesSection({
     setError("");
     setSuccess("");
     try {
-      const response = await fetch(`${API_BASE}/api/cash-registers/open`, {
+      const response = await mercadoApiFetch("/api/cash-registers/open", companyKey, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operatorName: user.name, operatorEmail: user.email }),
@@ -252,8 +255,9 @@ export default function SalesSection({
     setError("");
     setSuccess("");
     try {
-      const response = await fetch(
-        `${API_BASE}/api/sales/latest?operatorEmail=${encodeURIComponent(user.email)}`,
+      const response = await mercadoApiFetch(
+        `/api/sales/latest?operatorEmail=${encodeURIComponent(user.email)}`,
+        companyKey,
       );
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || "Nenhuma venda disponível para cancelamento.");
@@ -268,7 +272,7 @@ export default function SalesSection({
     setSubmitting(true);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/api/sales/${cancelSale.id}/cancel`, {
+      const response = await mercadoApiFetch(`/api/sales/${cancelSale.id}/cancel`, companyKey, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operatorName: user.name, operatorEmail: user.email }),
@@ -293,8 +297,9 @@ export default function SalesSection({
     setError("");
     setSuccess("");
     try {
-      const response = await fetch(
-        `${API_BASE}/api/cash-closures/preview?operatorEmail=${encodeURIComponent(user.email)}`,
+      const response = await mercadoApiFetch(
+        `/api/cash-closures/preview?operatorEmail=${encodeURIComponent(user.email)}`,
+        companyKey,
       );
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || "Não foi possível calcular o caixa.");
@@ -310,7 +315,7 @@ export default function SalesSection({
     setSubmitting(true);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/api/cash-closures`, {
+      const response = await mercadoApiFetch("/api/cash-closures", companyKey, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

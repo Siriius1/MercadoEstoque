@@ -1,16 +1,16 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import { movements, products } from "../../../../db/schema";
-import { requireApiUser } from "../../../auth";
+import { getSessionUser } from "../../../auth";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
-  const unauthorized = await requireApiUser(request);
-  if (unauthorized) return unauthorized;
+  const user = await getSessionUser(request);
+  if (!user) return Response.json({ error: "Sua sessão expirou. Entre novamente." }, { status: 401 });
   const { id } = await context.params;
   const productId = Number(id);
   const body = await request.json() as Record<string, unknown>;
   const db = await getDb();
-  const [existing] = await db.select().from(products).where(eq(products.id, productId)).limit(1);
+  const [existing] = await db.select().from(products).where(and(eq(products.id, productId), eq(products.companyId, user.companyId))).limit(1);
   if (!existing) return Response.json({ error: "Produto não encontrado." }, { status: 404 });
 
   const supplierId = Number(body.supplierId);
@@ -36,9 +36,10 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     supplierId,
     active: body.active !== false,
     updatedAt: now,
-  }).where(eq(products.id, productId)).returning();
+  }).where(and(eq(products.id, productId), eq(products.companyId, user.companyId))).returning();
   if (currentStock !== existing.currentStock) {
     await db.insert(movements).values({
+      companyId: user.companyId,
       productId,
       type: "ajuste",
       quantity: Math.abs(currentStock - existing.currentStock),
@@ -53,17 +54,17 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
-  const unauthorized = await requireApiUser(request);
-  if (unauthorized) return unauthorized;
+  const user = await getSessionUser(request);
+  if (!user) return Response.json({ error: "Sua sessão expirou. Entre novamente." }, { status: 401 });
   const { id } = await context.params;
   const productId = Number(id);
   if (!Number.isInteger(productId)) return Response.json({ error: "Produto inválido." }, { status: 400 });
   const d1 = await getD1();
-  const product = await d1.prepare("SELECT id FROM products WHERE id = ?").bind(productId).first();
+  const product = await d1.prepare("SELECT id FROM products WHERE id = ? AND company_id = ?").bind(productId, user.companyId).first();
   if (!product) return Response.json({ error: "Produto não encontrado." }, { status: 404 });
   await d1.batch([
-    d1.prepare("DELETE FROM movements WHERE product_id = ?").bind(productId),
-    d1.prepare("DELETE FROM products WHERE id = ?").bind(productId),
+    d1.prepare("DELETE FROM movements WHERE product_id = ? AND company_id = ?").bind(productId, user.companyId),
+    d1.prepare("DELETE FROM products WHERE id = ? AND company_id = ?").bind(productId, user.companyId),
   ]);
   return Response.json({ success: true });
 }

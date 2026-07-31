@@ -6,7 +6,7 @@ import SalesSection from "./sales-section";
 import SalesMovementsSection from "./movements-section";
 import EmployeesSection from "./employees-section";
 import PaymentSettingsSection from "./payment-settings-section";
-import { apiUrl } from "./api-base";
+import { mercadoApiFetch } from "./api-base";
 
 type Section = "painel" | "vendas" | "produtos" | "fornecedores" | "funcionarios" | "movimentacoes" | "relatorios" | "configuracoes";
 type Product = { id:number; sku:string; barcode:string; name:string; category:string; unit:string; costPrice:number; salePrice:number; salePriceUpdatedAt:string|null; currentStock:number; minimumStock:number; supplierId:number|null; supplierName:string|null; active:boolean };
@@ -20,7 +20,7 @@ type Theme = "light"|"dark";
 const money = (value = 0) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const dateTime = (value:string) => { const normalized=value.replace(" ","T"); const hasTimezone=/Z$|[+-]\d{2}:\d{2}$/.test(normalized); return new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(hasTimezone?normalized:`${normalized}Z`)); };
 const initials = (name:string) => name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase();
-export default function Dashboard({user}:{user:{name:string;email:string;role:string}}) {
+export default function Dashboard({user}:{user:{name:string;email:string;role:string;companyKey:string;companyName:string;isDemo:boolean}}) {
   const isCashier = user.role === "cashier";
   const [section, setSection] = useState<Section>(isCashier ? "vendas" : "painel");
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,20 +39,29 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
 
   const load = useCallback(async () => {
     try {
+      if (user.isDemo) {
+        const demo = await mercadoApiFetch("/api/demo/seed", user.companyKey, { method:"POST" });
+        if (!demo.ok) throw new Error();
+      }
       if (isCashier) {
-        const response = await fetch(apiUrl("/api/products"));
+        const response = await mercadoApiFetch("/api/products", user.companyKey);
         if (!response.ok) throw new Error();
         const data = await response.json();
         setProducts(data.products);
         return;
       }
-      const [p, s, m, d] = await Promise.all([fetch(apiUrl("/api/products")), fetch(apiUrl("/api/suppliers")), fetch(apiUrl("/api/movements")), fetch(apiUrl("/api/dashboard"))]);
+      const [p, s, m, d] = await Promise.all([
+        mercadoApiFetch("/api/products", user.companyKey),
+        mercadoApiFetch("/api/suppliers", user.companyKey),
+        mercadoApiFetch("/api/movements", user.companyKey),
+        mercadoApiFetch("/api/dashboard", user.companyKey),
+      ]);
       if (![p,s,m,d].every(response => response.ok)) throw new Error();
       const [pd,sd,md,dd] = await Promise.all([p.json(), s.json(), m.json(), d.json()]);
       setProducts(pd.products); setSuppliers(sd.suppliers); setMovements(md.movements); setSummary(dd.summary); setRecent(dd.recent);
     } catch { setNotice("Não foi possível carregar o banco de dados."); }
     finally { setLoading(false); }
-  }, [isCashier]);
+  }, [isCashier, user.companyKey, user.isDemo]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(""), 4500); return () => clearTimeout(timer); } }, [notice]);
@@ -82,7 +91,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   const closeModal = () => { setModal(null); setEditing(null); };
 
   async function submit(endpoint:string, data:Record<string, FormDataEntryValue>, method="POST") {
-    const response = await fetch(apiUrl(endpoint), { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
+    const response = await mercadoApiFetch(endpoint, user.companyKey, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
     const result = await response.json();
     if (!response.ok) {
       const validationMessage=Array.isArray(result.detail)&&result.detail[0]?.msg
@@ -102,7 +111,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   }
 
   async function executeDelete(target:DeleteTarget, hideSupplierWarning = false) {
-    const response = await fetch(apiUrl(`/api/${target.kind}/${target.id}`), { method:"DELETE" });
+    const response = await mercadoApiFetch(`/api/${target.kind}/${target.id}`, user.companyKey, { method:"DELETE" });
     const result = await response.json();
     if (!response.ok) { setNotice(result.error || "Não foi possível excluir."); return; }
     if (hideSupplierWarning && target.kind === "suppliers") localStorage.setItem("mercado-hide-supplier-delete-warning", "true");
@@ -146,16 +155,17 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
     <main>
       <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className={`theme-toggle ${theme}`} type="button" onClick={toggleTheme} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Mudar para modo claro" : "Mudar para modo escuro"}><span className="theme-sun" aria-hidden="true">☀</span><span className="theme-moon" aria-hidden="true">☾</span></button>{!isCashier && <button className="icon-button" aria-label={pendingText}>●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}<span className="notification-tooltip" role="tooltip">{pendingText}</span></button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
       <div className="content">
+        {user.isDemo && <div className="demo-environment-banner"><strong>Ambiente de demonstração</strong><span>Você possui acesso total. Estes dados são exclusivos desta sessão de teste.</span></div>}
         {notice && <div className="toast">{notice}</div>}
         {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
           {!isCashier && section === "painel" && <DashboardSection summary={summary} recent={recent} lowProducts={lowProducts} onNavigate={setSection} onMovement={() => openNew("movement")} />}
-          {section === "vendas" && <SalesSection products={products} user={user} onSaleCompleted={load} />}
+          {section === "vendas" && <SalesSection products={products} user={user} companyKey={user.companyKey} onSaleCompleted={load} />}
           {!isCashier && section === "produtos" && <ProductsSection products={filteredProducts} search={search} setSearch={setSearch} onNew={() => openNew("product")} onEdit={p => openEdit("product", p)} onDelete={p => requestDelete({ kind:"products", id:p.id, name:p.name, linkedCount:0 })} />}
           {!isCashier && section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={s => requestDelete({ kind:"suppliers", id:s.id, name:s.name, linkedCount:s.productCount })} />}
           {!isCashier && section === "funcionarios" && <EmployeesSection currentUser={user} />}
           {!isCashier && section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
           {!isCashier && section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
-          {!isCashier && section === "configuracoes" && <PaymentSettingsSection />}
+          {!isCashier && section === "configuracoes" && <PaymentSettingsSection companyKey={user.companyKey} />}
         </>}
       </div>
     </main>

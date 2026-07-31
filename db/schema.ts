@@ -1,8 +1,17 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+export const companies = sqliteTable("companies", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  publicKey: text("public_key").notNull().unique(),
+  name: text("name").notNull(),
+  isDemo: integer("is_demo", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
 
 export const suppliers = sqliteTable("suppliers", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1).references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   document: text("document").notNull().default(""),
   contact: text("contact").notNull().default(""),
@@ -11,16 +20,18 @@ export const suppliers = sqliteTable("suppliers", {
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
+}, (table) => [index("suppliers_company_idx").on(table.companyId)]);
 
 export const productSequence = sqliteTable("product_sequence", {
-  id: integer("id").primaryKey(),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1).unique().references(() => companies.id, { onDelete: "cascade" }),
   lastValue: integer("last_value").notNull().default(0),
 });
 
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  sku: text("sku").notNull().unique(),
+  companyId: integer("company_id").notNull().default(1).references(() => companies.id, { onDelete: "cascade" }),
+  sku: text("sku").notNull(),
   name: text("name").notNull(),
   category: text("category").notNull().default("Mercearia"),
   unit: text("unit").notNull().default("un"),
@@ -33,10 +44,16 @@ export const products = sqliteTable("products", {
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => [index("products_supplier_idx").on(table.supplierId), index("products_name_idx").on(table.name)]);
+}, (table) => [
+  uniqueIndex("products_company_sku_unique").on(table.companyId, table.sku),
+  index("products_company_idx").on(table.companyId),
+  index("products_supplier_idx").on(table.supplierId),
+  index("products_name_idx").on(table.name),
+]);
 
 export const movements = sqliteTable("movements", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1).references(() => companies.id, { onDelete: "cascade" }),
   productId: integer("product_id").notNull().references(() => products.id, { onDelete: "restrict" }),
   type: text("type", { enum: ["entrada", "saida", "ajuste"] }).notNull(),
   quantity: real("quantity").notNull(),
@@ -46,10 +63,11 @@ export const movements = sqliteTable("movements", {
   reason: text("reason").notNull().default(""),
   notes: text("notes").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => [index("movements_product_idx").on(table.productId), index("movements_created_idx").on(table.createdAt)]);
+}, (table) => [index("movements_company_idx").on(table.companyId), index("movements_product_idx").on(table.productId), index("movements_created_idx").on(table.createdAt)]);
 
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1).references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
@@ -58,7 +76,7 @@ export const users = sqliteTable("users", {
   role: text("role").notNull().default("admin"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-}, (table) => [index("users_email_idx").on(table.email)]);
+}, (table) => [index("users_company_idx").on(table.companyId), index("users_email_idx").on(table.email)]);
 
 export const authSessions = sqliteTable("auth_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -79,7 +97,8 @@ export const authTokens = sqliteTable("auth_tokens", {
 }, (table) => [index("auth_tokens_user_idx").on(table.userId), index("auth_tokens_token_idx").on(table.tokenHash)]);
 
 export const paymentSettings = sqliteTable("payment_settings", {
-  id: integer("id").primaryKey(),
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyId: integer("company_id").notNull().default(1).unique().references(() => companies.id, { onDelete: "cascade" }),
   pixEnabled: integer("pix_enabled", { mode: "boolean" }).notNull().default(false),
   pixKeyType: text("pix_key_type").notNull().default("cnpj"),
   pixKey: text("pix_key").notNull().default(""),

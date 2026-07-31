@@ -3,9 +3,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import PixPayment from "./pix-payment";
 import { emptyPixSettings, normalizePixKey, PixKeyType, PixSettings, validatePixSettings } from "./pix";
-import { API_BASE } from "./api-base";
+import { mercadoApiFetch } from "./api-base";
 
-export default function PaymentSettingsSection() {
+export default function PaymentSettingsSection({ companyKey }: { companyKey: string }) {
   const [settings, setSettings] = useState<PixSettings>(emptyPixSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -13,7 +13,7 @@ export default function PaymentSettingsSection() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    void fetch(`${API_BASE}/api/payment-settings/pix`)
+    void mercadoApiFetch("/api/payment-settings/pix", companyKey)
       .then(async response => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || result.error);
@@ -21,7 +21,7 @@ export default function PaymentSettingsSection() {
       })
       .catch(caught => setError(caught instanceof Error ? caught.message : "Não foi possível carregar o PIX."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [companyKey]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,7 +34,7 @@ export default function PaymentSettingsSection() {
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`${API_BASE}/api/payment-settings/pix`, {
+      const response = await mercadoApiFetch("/api/payment-settings/pix", companyKey, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),

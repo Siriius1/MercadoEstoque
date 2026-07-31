@@ -11,3 +11,9 @@ export const API_BASE =
     : configuredApiBase;
 
 export const apiUrl = (path: string) => `${API_BASE}${path}`;
+
+export function mercadoApiFetch(path: string, companyKey: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set("X-Mercado-Tenant", companyKey);
+  return fetch(apiUrl(path), { ...init, headers });
+}

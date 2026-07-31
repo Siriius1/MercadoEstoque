@@ -54,7 +54,16 @@ function readCookie(cookieHeader: string, name: string) {
   return "";
 }
 
-export type SessionUser = { id: number; name: string; email: string; role: string };
+export type SessionUser = {
+  id: number;
+  companyId: number;
+  companyKey: string;
+  companyName: string;
+  isDemo: boolean;
+  name: string;
+  email: string;
+  role: string;
+};
 
 export async function getSessionUser(request?: Request): Promise<SessionUser | null> {
   const cookieHeader = request ? request.headers.get("cookie") ?? "" : (await headers()).get("cookie") ?? "";
@@ -62,7 +71,9 @@ export async function getSessionUser(request?: Request): Promise<SessionUser | n
   if (!token) return null;
   const tokenHash = await hashToken(token);
   const d1 = await getD1();
-  const user = await d1.prepare("SELECT users.id, users.name, users.email, users.role FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id WHERE auth_sessions.token_hash = ? AND datetime(auth_sessions.expires_at) > CURRENT_TIMESTAMP AND users.email_verified_at IS NOT NULL").bind(tokenHash).first<SessionUser>();
+  const user = await d1.prepare(
+    "SELECT users.id, users.company_id AS companyId, companies.public_key AS companyKey, companies.name AS companyName, companies.is_demo AS isDemo, users.name, users.email, users.role FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id JOIN companies ON companies.id = users.company_id WHERE auth_sessions.token_hash = ? AND datetime(auth_sessions.expires_at) > CURRENT_TIMESTAMP AND users.email_verified_at IS NOT NULL"
+  ).bind(tokenHash).first<SessionUser>();
   return user ?? null;
 }
 

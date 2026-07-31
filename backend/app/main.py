@@ -1,12 +1,13 @@
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, event, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -28,6 +29,41 @@ from .serializers import movement_json, number, product_json, supplier_json
 
 
 CENT = Decimal("0.01")
+tenant_context: ContextVar[str] = ContextVar("mercado_tenant", default="")
+TENANT_MODELS = (Supplier, Product, Sale, SaleItem, CashClosure, CashRegister, PaymentSettings, StockMovement)
+
+
+def current_tenant() -> str:
+    company_key = tenant_context.get()
+    if not company_key:
+        raise HTTPException(401, "Estabelecimento não identificado.")
+    return company_key
+
+
+@event.listens_for(Session, "do_orm_execute")
+def isolate_company_data(execute_state) -> None:
+    """Aplica o filtro da empresa no servidor, inclusive quando uma rota esquecer de fazê-lo."""
+    company_key = tenant_context.get()
+    if not company_key or not execute_state.is_orm_statement:
+        return
+    from sqlalchemy.orm import with_loader_criteria
+
+    statement = execute_state.statement
+    for model in TENANT_MODELS:
+        statement = statement.options(
+            with_loader_criteria(model, lambda cls: cls.company_key == company_key, include_aliases=True)
+        )
+    execute_state.statement = statement
+
+
+@event.listens_for(Session, "before_flush")
+def assign_company_to_new_records(session, _flush_context, _instances) -> None:
+    company_key = tenant_context.get()
+    if not company_key:
+        return
+    for record in session.new:
+        if isinstance(record, TENANT_MODELS):
+            record.company_key = company_key
 
 
 def initialize_database() -> None:
@@ -38,6 +74,34 @@ def initialize_database() -> None:
         connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_name VARCHAR(180)"))
         connection.execute(text("ALTER TABLE sales ADD COLUMN IF NOT EXISTS cancelled_by_email VARCHAR(180)"))
         connection.execute(text("ALTER TABLE products ALTER COLUMN minimum_stock SET DEFAULT 5"))
+        for table_name in (
+            "suppliers", "products", "sales", "sale_items", "cash_closures",
+            "cash_registers", "payment_settings", "stock_movements",
+        ):
+            connection.execute(text(
+                f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS company_key VARCHAR(64) NOT NULL DEFAULT 'legacy'"
+            ))
+            connection.execute(text(
+                f"CREATE INDEX IF NOT EXISTS {table_name}_company_idx ON {table_name} (company_key)"
+            ))
+        connection.execute(text("ALTER TABLE products DROP CONSTRAINT IF EXISTS products_sku_key"))
+        connection.execute(text("ALTER TABLE products DROP CONSTRAINT IF EXISTS products_barcode_key"))
+        # Versões anteriores criavam estes campos como índices únicos globais.
+        # Agora a mesma numeração pode existir em empresas diferentes.
+        connection.execute(text("DROP INDEX IF EXISTS ix_products_sku"))
+        connection.execute(text("DROP INDEX IF EXISTS ix_products_barcode"))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS products_company_sku_unique "
+            "ON products (company_key, sku)"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS products_company_barcode_unique "
+            "ON products (company_key, barcode) WHERE barcode IS NOT NULL"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS payment_settings_company_unique "
+            "ON payment_settings (company_key)"
+        ))
         connection.execute(
             text(
                 "ALTER TABLE cash_closures "
@@ -52,6 +116,7 @@ def initialize_database() -> None:
                     SELECT COUNT(*)
                     FROM sales AS sale
                     WHERE sale.status = 'completed'
+                      AND sale.company_key = closure.company_key
                       AND lower(sale.operator_email) = lower(closure.operator_email)
                       AND sale.created_at >= closure.period_start
                       AND sale.created_at <= closure.period_end
@@ -77,6 +142,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def identify_company(request: Request, call_next):
+    if request.url.path.startswith("/api/") and request.url.path != "/api/auth/google-profile":
+        company_key = request.headers.get("X-Mercado-Tenant", "").strip()
+        if not company_key:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Estabelecimento não identificado."}, status_code=401)
+        context_token = tenant_context.set(company_key)
+        try:
+            return await call_next(request)
+        finally:
+            tenant_context.reset(context_token)
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -115,6 +195,55 @@ async def google_profile(payload: GoogleCredentialInput) -> dict:
             "authoritative": email.endswith("@gmail.com") or bool(info.get("hd")),
         }
     }
+
+
+@app.post("/api/demo/seed")
+def seed_demo_company(db: Session = Depends(get_db)) -> dict:
+    """Cria dados realistas somente dentro da empresa temporária da demonstração."""
+    if db.scalar(select(func.count(Product.id))) > 0:
+        return {"seeded": False}
+    supplier = Supplier(
+            name="Distribuidora Modelo",
+            document="12.345.678/0001-90",
+            contact="Equipe comercial",
+            email="pedidos@distribuidora.demo",
+            phone="(11) 4000-2026",
+    )
+    db.add(supplier)
+    db.flush()
+    samples = [
+            ("#0001", "Arroz", "Grãos", "pct", Decimal("18.50"), Decimal("25.90"), Decimal("15")),
+            ("#0002", "Café", "Mercearia", "un", Decimal("12.00"), Decimal("18.00"), Decimal("20")),
+            ("#0003", "Feijão", "Grãos", "pct", Decimal("6.20"), Decimal("10.99"), Decimal("9")),
+            ("#0004", "Leite", "Laticínios", "un", Decimal("4.89"), Decimal("6.49"), Decimal("24")),
+            ("#0005", "Macarrão", "Massas", "un", Decimal("3.20"), Decimal("6.00"), Decimal("18")),
+    ]
+    for sku, name, category, unit, cost, price, stock in samples:
+        product = Product(
+                sku=sku,
+                name=name,
+                category=category,
+                unit=unit,
+                cost_price=cost,
+                sale_price=price,
+                current_stock=stock,
+                minimum_stock=5,
+                supplier_id=supplier.id,
+        )
+        db.add(product)
+        db.flush()
+        db.add(StockMovement(
+                product_id=product.id,
+                type="entrada",
+                quantity=stock,
+                previous_stock=0,
+                resulting_stock=stock,
+                unit_cost=cost,
+                reason="Estoque inicial da demonstração",
+                operator_name="Administrador de demonstração",
+        ))
+    db.commit()
+    return {"seeded": True}
 
 
 def find_product(db: Session, product_id: int, lock: bool = False) -> Product:
@@ -173,16 +302,17 @@ def validate_pix_settings(payload: PixPaymentSettingsInput) -> None:
 
 @app.get("/api/payment-settings/pix")
 def get_pix_settings(db: Session = Depends(get_db)) -> dict:
-    return {"settings": pix_settings_json(db.get(PaymentSettings, 1))}
+    record = db.scalar(select(PaymentSettings).where(PaymentSettings.company_key == current_tenant()))
+    return {"settings": pix_settings_json(record)}
 
 
 @app.put("/api/payment-settings/pix")
 def update_pix_settings(payload: PixPaymentSettingsInput, db: Session = Depends(get_db)) -> dict:
     validate_pix_settings(payload)
     with db.begin():
-        settings_record = db.get(PaymentSettings, 1)
+        settings_record = db.scalar(select(PaymentSettings).where(PaymentSettings.company_key == current_tenant()))
         if not settings_record:
-            settings_record = PaymentSettings(id=1)
+            settings_record = PaymentSettings()
             db.add(settings_record)
         settings_record.pix_enabled = payload.enabled
         settings_record.pix_key_type = payload.keyType
@@ -221,7 +351,16 @@ def create_product(payload: ProductInput, db: Session = Depends(get_db)) -> dict
         raise HTTPException(422, "Informe um estoque inicial maior que zero.")
     validate_supplier(db, payload.supplierId)
     try:
-        sequence_value = db.scalar(select(func.nextval("product_sku_seq")))
+        company_key = current_tenant()
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"product-sequence:{company_key}"},
+        )
+        existing_skus = db.scalars(select(Product.sku)).all()
+        sequence_value = max(
+            (int("".join(character for character in sku if character.isdigit()) or "0") for sku in existing_skus),
+            default=0,
+        ) + 1
         product = Product(
             sku=f"#{int(sequence_value):04d}",
             barcode=payload.barcode,

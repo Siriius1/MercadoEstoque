@@ -19,7 +19,7 @@ function serialize(row: typeof paymentSettings.$inferSelect | undefined): PixSet
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return Response.json({ error: "Sua sessão expirou. Entre novamente." }, { status: 401 });
-  const row = await (await getDb()).query.paymentSettings.findFirst({ where: eq(paymentSettings.id, 1) });
+  const row = await (await getDb()).query.paymentSettings.findFirst({ where: eq(paymentSettings.companyId, user.companyId) });
   return Response.json({ settings: serialize(row) });
 }
 
@@ -45,7 +45,7 @@ export async function PUT(request: Request) {
     pixCity: settings.city,
     updatedAt: new Date().toISOString(),
   };
-  await (await getDb()).insert(paymentSettings).values({ id: 1, ...values }).onConflictDoUpdate({ target: paymentSettings.id, set: values });
-  const row = await (await getDb()).query.paymentSettings.findFirst({ where: eq(paymentSettings.id, 1) });
+  await (await getDb()).insert(paymentSettings).values({ companyId: user.companyId, ...values }).onConflictDoUpdate({ target: paymentSettings.companyId, set: values });
+  const row = await (await getDb()).query.paymentSettings.findFirst({ where: eq(paymentSettings.companyId, user.companyId) });
   return Response.json({ settings: serialize(row) });
 }
