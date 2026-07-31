@@ -56,7 +56,7 @@ export default function AuthScreen({ initialMode, token, googleClientId }: { ini
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json() as { error?: string; message?: string; previewUrl?: string };
       if (!response.ok) throw new Error(result.error || "Não foi possível concluir.");
-      if (endpoint.endsWith("/login")) { window.location.href = "/"; return; }
+      if (endpoint.endsWith("/login") || endpoint.endsWith("/google")) { window.location.href = "/"; return; }
       setMessage(result.message ?? "Concluído com sucesso.");
       setPreviewUrl(result.previewUrl ?? "");
     } catch (caught) {

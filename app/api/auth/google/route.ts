@@ -6,8 +6,11 @@ export async function POST(request: Request) {
   try {
     const origin = request.headers.get("origin");
     if (origin && origin !== new URL(request.url).origin) return Response.json({ error: "Origem de acesso inválida." }, { status: 403 });
+    const requestUrl = new URL(request.url);
     const body = await request.json() as { credential?: string };
-    const profile = await verifyGoogleCredential(String(body.credential ?? ""));
+    const profile = await verifyGoogleCredential(String(body.credential ?? ""), {
+      developmentApi: ["localhost", "127.0.0.1"].includes(requestUrl.hostname),
+    });
     if (!profile.authoritative) return Response.json({ error: "Use uma conta Gmail ou Google Workspace. Para outros endereços, entre com e-mail e senha." }, { status: 403 });
     const d1 = await getD1();
     let user = await d1.prepare("SELECT id, google_sub FROM users WHERE google_sub = ?").bind(profile.sub).first<{ id: number; google_sub: string | null }>();
@@ -27,7 +30,7 @@ export async function POST(request: Request) {
     const tokenHash = await hashToken(token);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     await d1.prepare("INSERT INTO auth_sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)").bind(user.id, tokenHash, expiresAt).run();
-    return Response.json({ success: true }, { headers: { "Set-Cookie": sessionCookie(token, new URL(request.url).protocol === "https:") } });
+    return Response.json({ success: true }, { headers: { "Set-Cookie": sessionCookie(token, requestUrl.protocol === "https:") } });
   } catch (caught) {
     return Response.json({ error: caught instanceof Error ? caught.message : "Não foi possível entrar com o Google." }, { status: 401 });
   }

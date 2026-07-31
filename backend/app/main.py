@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import delete, func, or_, select, text
@@ -16,6 +17,7 @@ from .schemas import (
     CancelSaleInput,
     CashClosureInput,
     CashRegisterOpenInput,
+    GoogleCredentialInput,
     MovementInput,
     ProductInput,
     PixPaymentSettingsInput,
@@ -81,6 +83,38 @@ app.add_middleware(
 def health(db: Session = Depends(get_db)) -> dict:
     db.execute(text("SELECT 1"))
     return {"status": "ok", "database": "postgresql"}
+
+
+@app.post("/api/auth/google-profile")
+async def google_profile(payload: GoogleCredentialInput) -> dict:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"id_token": payload.credential},
+            )
+    except httpx.HTTPError as error:
+        raise HTTPException(502, "Não foi possível consultar o Google.") from error
+    if response.status_code != 200:
+        raise HTTPException(401, "O Google não conseguiu validar esta identificação.")
+    info = response.json()
+    if info.get("aud") != settings.google_client_id:
+        raise HTTPException(401, "Credencial destinada a outro aplicativo.")
+    if info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(401, "Emissor Google inválido.")
+    if int(info.get("exp", 0)) * 1000 <= datetime.now(timezone.utc).timestamp() * 1000:
+        raise HTTPException(401, "A autenticação Google expirou.")
+    if not info.get("sub") or not info.get("email") or str(info.get("email_verified")).lower() != "true":
+        raise HTTPException(401, "O Google não confirmou este e-mail.")
+    email = str(info["email"]).lower()
+    return {
+        "profile": {
+            "sub": str(info["sub"]),
+            "email": email,
+            "name": str(info.get("name") or email.split("@")[0]).strip(),
+            "authoritative": email.endswith("@gmail.com") or bool(info.get("hd")),
+        }
+    }
 
 
 def find_product(db: Session, product_id: int, lock: bool = False) -> Product:

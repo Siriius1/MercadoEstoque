@@ -5,7 +5,7 @@ $python = "C:\Estudos\.tools\Python314\python.exe"
 $node = "C:\Estudos\.tools\node-v22.14.0-win-x64\node.exe"
 $vinext = Join-Path $projectRoot "node_modules\vinext\dist\cli.js"
 $pidDirectory = Join-Path $projectRoot ".local-pids"
-$apiPort = 8001
+$apiPort = 8002
 
 & (Join-Path $PSScriptRoot "setup-postgres.ps1")
 New-Item -ItemType Directory -Path $pidDirectory -Force | Out-Null

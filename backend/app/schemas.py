@@ -4,6 +4,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+class GoogleCredentialInput(BaseModel):
+    credential: str = Field(min_length=20)
+
+
 class ProductInput(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     barcode: str | None = Field(default=None, max_length=64)

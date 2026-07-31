@@ -38,9 +38,35 @@ export function getGoogleClientId() {
   return (env as unknown as Record<string, string | undefined>).GOOGLE_CLIENT_ID ?? "";
 }
 
-export async function verifyGoogleCredential(credential: string) {
+function validateGooglePayload(payload: GooglePayload) {
+  const clientId = getGoogleClientId();
+  if (!clientId || payload.aud !== clientId) throw new Error("Credencial destinada a outro aplicativo.");
+  if (!["accounts.google.com", "https://accounts.google.com"].includes(payload.iss)) throw new Error("Emissor Google inválido.");
+  if (!payload.exp || payload.exp * 1000 <= Date.now()) throw new Error("A autenticação Google expirou.");
+  if (!payload.sub || !payload.email || payload.email_verified !== true) throw new Error("O Google não confirmou este e-mail.");
+  return { sub: payload.sub, email: payload.email.toLowerCase(), name: payload.name?.trim() || payload.email.split("@")[0], authoritative: payload.email.endsWith("@gmail.com") || Boolean(payload.hd) };
+}
+
+async function verifyWithLocalApi(credential: string) {
+  const response = await fetch("http://127.0.0.1:8002/api/auth/google-profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential }),
+  });
+  const result = await response.json() as {
+    detail?: string;
+    profile?: { sub: string; email: string; name: string; authoritative: boolean };
+  };
+  if (!response.ok || !result.profile) throw new Error(result.detail || "O Google não conseguiu validar esta identificação.");
+  return result.profile;
+}
+
+export async function verifyGoogleCredential(credential: string, options?: { developmentApi?: boolean }) {
   const parts = credential.split(".");
   if (parts.length !== 3) throw new Error("Credencial Google inválida.");
+  // No desenvolvimento a API Python consulta o Google. Em produção a assinatura
+  // continua sendo verificada localmente com as chaves públicas do provedor.
+  if (options?.developmentApi) return verifyWithLocalApi(credential);
   const header = decodeJson<{ alg: string; kid: string }>(parts[0]);
   if (header.alg !== "RS256" || !header.kid) throw new Error("Credencial Google inválida.");
   const jwk = (await getGoogleKeys()).find(key => key.kid === header.kid);
@@ -48,11 +74,5 @@ export async function verifyGoogleCredential(credential: string) {
   const publicKey = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const validSignature = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, decodeBase64Url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
   if (!validSignature) throw new Error("Assinatura Google inválida.");
-  const payload = decodeJson<GooglePayload>(parts[1]);
-  const clientId = getGoogleClientId();
-  if (!clientId || payload.aud !== clientId) throw new Error("Credencial destinada a outro aplicativo.");
-  if (!["accounts.google.com", "https://accounts.google.com"].includes(payload.iss)) throw new Error("Emissor Google inválido.");
-  if (!payload.exp || payload.exp * 1000 <= Date.now()) throw new Error("A autenticação Google expirou.");
-  if (!payload.sub || !payload.email || payload.email_verified !== true) throw new Error("O Google não confirmou este e-mail.");
-  return { sub: payload.sub, email: payload.email.toLowerCase(), name: payload.name?.trim() || payload.email.split("@")[0], authoritative: payload.email.endsWith("@gmail.com") || Boolean(payload.hd) };
+  return validateGooglePayload(decodeJson<GooglePayload>(parts[1]));
 }

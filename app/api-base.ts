@@ -7,7 +7,7 @@ const configuredApiBase = process.env.NEXT_PUBLIC_MERCADO_API_URL || "";
  */
 export const API_BASE =
   typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? "http://127.0.0.1:8001"
+    ? "http://127.0.0.1:8002"
     : configuredApiBase;
 
 export const apiUrl = (path: string) => `${API_BASE}${path}`;
