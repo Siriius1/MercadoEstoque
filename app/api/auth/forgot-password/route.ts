@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   const email = normalizeEmail(body.email);
   if (!isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
   const d1 = await getD1();
-  const user = await d1.prepare("SELECT id, name FROM users WHERE email = ? AND email_verified_at IS NOT NULL").bind(email).first<{ id: number; name: string }>();
+  const user = await d1.prepare("SELECT id, name FROM users WHERE email = ? AND email_verified_at IS NOT NULL AND approval_status = 'approved'").bind(email).first<{ id: number; name: string }>();
   let previewUrl: string | null = null;
   if (user) {
     const token = randomToken();

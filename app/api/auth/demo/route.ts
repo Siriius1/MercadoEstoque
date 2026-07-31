@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!company) return Response.json({ error: "Não foi possível preparar a demonstração." }, { status: 500 });
 
   const user = await d1.prepare(
-    "INSERT INTO users (company_id, name, email, password_hash, email_verified_at, role) VALUES (?, 'Administrador de demonstração', ?, ?, CURRENT_TIMESTAMP, 'admin') RETURNING id"
+    "INSERT INTO users (company_id, name, email, password_hash, email_verified_at, approval_status, role) VALUES (?, 'Administrador de demonstração', ?, ?, CURRENT_TIMESTAMP, 'approved', 'admin') RETURNING id"
   ).bind(company.id, `demo-${demoCode}@mercadomais.local`, `demo_session$${randomToken()}`).first<{ id: number }>();
   if (!user) return Response.json({ error: "Não foi possível preparar o acesso de demonstração." }, { status: 500 });
 

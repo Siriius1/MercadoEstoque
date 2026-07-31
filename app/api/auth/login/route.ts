@@ -7,8 +7,10 @@ export async function POST(request: Request) {
   const email = normalizeEmail(body.email);
   const password = String(body.password ?? "");
   const d1 = await getD1();
-  const user = await d1.prepare("SELECT id, password_hash, email_verified_at FROM users WHERE email = ?").bind(email).first<{ id: number; password_hash: string; email_verified_at: string | null }>();
+  const user = await d1.prepare("SELECT id, password_hash, email_verified_at, approval_status FROM users WHERE email = ?").bind(email).first<{ id: number; password_hash: string; email_verified_at: string | null; approval_status: string }>();
   if (!user || !(await verifyPassword(password, user.password_hash))) return Response.json({ error: "E-mail ou senha incorretos." }, { status: 401 });
+  if (user.approval_status === "pending") return Response.json({ error: "Seu cadastro ainda está aguardando aprovação." }, { status: 403 });
+  if (user.approval_status === "rejected") return Response.json({ error: "Esta solicitação não foi aprovada. Você pode enviar um novo pedido." }, { status: 403 });
   if (!user.email_verified_at) return Response.json({ error: "Confirme seu e-mail antes de entrar." }, { status: 403 });
   const token = randomToken();
   const tokenHash = await hashToken(token);

@@ -10,8 +10,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ a
   if (user) return <Dashboard user={user} />;
   const params = await searchParams;
   const registrationOpen = true;
-  const allowed = ["login", "register", "forgot", "reset", "verify", "invite"] as const;
+  const allowed = ["login", "register", "forgot", "reset", "verify", "invite", "pending", "approve", "reject"] as const;
   const requestedMode = allowed.includes(params.auth as typeof allowed[number]) ? params.auth as typeof allowed[number] : "login";
   const initialMode = requestedMode === "register" && !registrationOpen ? "login" : requestedMode;
-  return <AuthScreen initialMode={initialMode} token={params.token ?? ""} googleClientId={getGoogleClientId()} registrationOpen={registrationOpen} welcome={params.welcome === "1"} />;
+  return <AuthScreen initialMode={initialMode} token={params.token ?? ""} googleClientId={getGoogleClientId()} registrationOpen={registrationOpen} welcome={params.welcome ?? ""} />;
 }

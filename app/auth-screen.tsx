@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-type Mode = "login" | "register" | "forgot" | "reset" | "verify" | "invite";
+type Mode = "login" | "register" | "forgot" | "reset" | "verify" | "invite" | "pending" | "approve" | "reject";
 
 const normalizeEmailInput = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 
@@ -12,16 +12,25 @@ declare global {
   interface Window { google?: { accounts: GoogleAccounts } }
 }
 
-export default function AuthScreen({ initialMode, token, googleClientId, registrationOpen, welcome }: { initialMode: Mode; token: string; googleClientId: string; registrationOpen: boolean; welcome: boolean }) {
-  const [message, setMessage] = useState(welcome ? "Acesso ativado. Entre com sua nova senha ou com o Google." : "");
+export default function AuthScreen({ initialMode, token, googleClientId, registrationOpen, welcome }: { initialMode: Mode; token: string; googleClientId: string; registrationOpen: boolean; welcome: string }) {
+  const welcomeMessage = welcome === "approved" ? "Seu cadastro foi aprovado. Sua empresa está pronta para receber você." : welcome === "1" ? "Acesso ativado. Entre com sua nova senha ou com o Google." : "";
+  const [message, setMessage] = useState(welcomeMessage);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(initialMode === "verify");
+  const [busy, setBusy] = useState(["verify", "approve", "reject"].includes(initialMode));
   const [previewUrl, setPreviewUrl] = useState("");
+  const [rejectPreviewUrl, setRejectPreviewUrl] = useState("");
+  const [pendingApproval, setPendingApproval] = useState(initialMode === "pending");
   const googleButton = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialMode !== "verify") return;
     void request("/api/auth/verify", { token });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMode, token]);
+
+  useEffect(() => {
+    if (initialMode !== "approve" && initialMode !== "reject") return;
+    void request("/api/auth/review-registration", { token, action: initialMode });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMode, token]);
 
@@ -54,18 +63,37 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
     setBusy(true); setError(""); setMessage(""); setPreviewUrl("");
     try {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const result = await response.json() as { error?: string; message?: string; previewUrl?: string };
+      const result = await response.json() as { error?: string; message?: string; previewUrl?: string; rejectPreviewUrl?: string; status?: string };
       if (!response.ok) throw new Error(result.error || "Não foi possível concluir.");
       if (endpoint.endsWith("/login") || endpoint.endsWith("/google")) { window.location.href = "/"; return; }
       if (endpoint.endsWith("/accept-invite")) { window.location.href = "/?auth=login&welcome=1"; return; }
       setMessage(result.message ?? "Concluído com sucesso.");
       setPreviewUrl(result.previewUrl ?? "");
+      setRejectPreviewUrl(result.rejectPreviewUrl ?? "");
+      if (endpoint.endsWith("/register") && result.status === "pending") setPendingApproval(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível concluir.");
     } finally {
       setBusy(false);
     }
   }
+
+  if (pendingApproval) return <main className="approval-wait-page">
+    <section className="approval-wait-card">
+      <div className="approval-orbit" aria-hidden="true"><i/><i/><i/><span>+</span></div>
+      <span className="approval-eyebrow">SOLICITAÇÃO ENVIADA</span>
+      <h1>Seu espaço está quase pronto.</h1>
+      <p>Recebemos seu cadastro e ele já está aguardando a autorização do responsável pelo Mercado+.</p>
+      <div className="approval-steps">
+        <div className="done"><b>✓</b><span><strong>Solicitação recebida</strong><small>Seus dados foram protegidos.</small></span></div>
+        <div className="active"><b>2</b><span><strong>Em análise</strong><small>O responsável recebeu um e-mail.</small></span></div>
+        <div><b>3</b><span><strong>Liberação do acesso</strong><small>Você receberá a resposta por e-mail.</small></span></div>
+      </div>
+      <p className="approval-note"><span/>É seguro fechar esta página. Avisaremos assim que houver uma decisão.</p>
+      {previewUrl && <div className="approval-local-test"><small>TESTE LOCAL</small><p>Como o envio real ainda não está ativo, use estes links para testar o fluxo:</p><div><a href={previewUrl}>Aprovar solicitação</a>{rejectPreviewUrl && <a className="reject" href={rejectPreviewUrl}>Recusar</a>}</div></div>}
+      <a className="approval-back" href="/">← Voltar para o login</a>
+    </section>
+  </main>;
 
   async function enterDemo() {
     setBusy(true);
@@ -94,8 +122,9 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
     await request(endpoint, { ...data, token });
   }
 
-  const title = initialMode === "register" ? "Criar sua conta" : initialMode === "forgot" ? "Recuperar senha" : initialMode === "reset" ? "Criar nova senha" : initialMode === "invite" ? "Ativar meu acesso" : initialMode === "verify" ? "Confirmar e-mail" : "Acessar o sistema";
-  const description = initialMode === "register" ? "Crie a primeira conta de administrador do estabelecimento." : initialMode === "forgot" ? "Enviaremos um link seguro para o seu e-mail." : initialMode === "reset" ? "Escolha uma nova senha para sua conta." : initialMode === "invite" ? "Você foi convidado para a equipe. Defina sua senha pessoal." : initialMode === "verify" ? "Estamos validando o link enviado ao seu e-mail." : "Entre com seu e-mail e sua senha.";
+  const reviewing = initialMode === "approve" || initialMode === "reject";
+  const title = initialMode === "register" ? "Solicitar sua conta" : initialMode === "forgot" ? "Recuperar senha" : initialMode === "reset" ? "Criar nova senha" : initialMode === "invite" ? "Ativar meu acesso" : initialMode === "verify" ? "Confirmar e-mail" : reviewing ? "Analisando solicitação" : "Acessar o sistema";
+  const description = initialMode === "register" ? "Preencha seus dados para solicitar a criação do seu estabelecimento." : initialMode === "forgot" ? "Enviaremos um link seguro para o seu e-mail." : initialMode === "reset" ? "Escolha uma nova senha para sua conta." : initialMode === "invite" ? "Você foi convidado para a equipe. Defina sua senha pessoal." : initialMode === "verify" ? "Estamos validando o link enviado ao seu e-mail." : reviewing ? "Estamos registrando sua decisão com segurança." : "Entre com seu e-mail e sua senha.";
 
   return <main className="auth-page">
     <section className="auth-brand">
@@ -119,7 +148,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
           <div className="google-login">{googleClientId ? <div ref={googleButton}/> : <button type="button" disabled title="Falta configurar o identificador do Google">Continuar com Google</button>}</div>
           <div className="auth-divider"><span>ou entre com e-mail</span></div>
         </>}
-        {initialMode === "verify" ? <div className="auth-result">{busy ? "Confirmando..." : message || error}</div> :
+        {(initialMode === "verify" || reviewing) ? <><div className={`auth-result ${error ? "error" : ""}`}>{busy ? "Processando..." : message || error}</div>{previewUrl && <a className="auth-preview" href={previewUrl}>Abrir e-mail de resposta local →</a>}</> :
           <form onSubmit={submit}>
             {initialMode === "register" && <label>Nome completo<input name="name" required autoComplete="name" placeholder="Seu nome"/></label>}
             {(initialMode === "login" || initialMode === "register" || initialMode === "forgot") && <label>E-mail<input name="email" type="email" required autoComplete="email" placeholder="voce@empresa.com.br" onInput={event => { event.currentTarget.value = normalizeEmailInput(event.currentTarget.value); }}/></label>}
@@ -128,7 +157,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
             {error && <div className="auth-error">{error}</div>}
             {message && <div className="auth-success">{message}</div>}
             {previewUrl && <a className="auth-preview" href={previewUrl}>Abrir e-mail de teste local →</a>}
-            <button className="auth-submit" disabled={busy}>{busy ? "Aguarde..." : initialMode === "register" ? "Criar conta" : initialMode === "forgot" ? "Enviar link" : initialMode === "reset" ? "Alterar senha" : initialMode === "invite" ? "Ativar acesso" : "Entrar"}</button>
+            <button className="auth-submit" disabled={busy}>{busy ? "Aguarde..." : initialMode === "register" ? "Solicitar cadastro" : initialMode === "forgot" ? "Enviar link" : initialMode === "reset" ? "Alterar senha" : initialMode === "invite" ? "Ativar acesso" : "Entrar"}</button>
           </form>}
         <div className="auth-links">
           {initialMode === "login" && <><a href="/?auth=forgot">Esqueci minha senha</a>{registrationOpen && <span>Primeiro acesso? <a href="/?auth=register">Criar conta do proprietário</a></span>}</>}
