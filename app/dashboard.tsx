@@ -129,7 +129,19 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
     <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
       <div className="brand"><span className="brand-mark">+</span><div><strong>Mercado<span>+</span></strong><small>GESTÃO DE ESTOQUE</small></div></div>
       <nav>{nav.map(item => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setSection(item.id); setSearch(""); setMenuOpen(false); }}><span>{item.icon}</span>{item.label}</button>)}</nav>
-      <div className="sidebar-foot"><div className="avatar">{initials(user.name)}</div><div><strong>{user.name}</strong><small>{maskEmail(user.email)}</small></div><span className="online-dot" /></div>
+      <div className="sidebar-foot">
+        <div className="sidebar-profile">
+          <div className="profile-avatar">{initials(user.name)}</div>
+          <div className="profile-copy">
+            <div className="profile-meta">
+              <span>{isCashier ? "Operador de caixa" : "Administrador"}</span>
+              <em><i /> Online</em>
+            </div>
+            <strong title={user.name}>{user.name}</strong>
+            <small title={user.email}>{maskEmail(user.email)}</small>
+          </div>
+        </div>
+      </div>
     </aside>
     <main>
       <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className={`theme-toggle ${theme}`} type="button" onClick={toggleTheme} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Mudar para modo claro" : "Mudar para modo escuro"}><span className="theme-sun" aria-hidden="true">☀</span><span className="theme-moon" aria-hidden="true">☾</span></button>{!isCashier && <button className="icon-button" aria-label={pendingText}>●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}<span className="notification-tooltip" role="tooltip">{pendingText}</span></button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
