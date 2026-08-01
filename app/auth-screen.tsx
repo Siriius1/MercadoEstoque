@@ -133,6 +133,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
       <h1>Seu estoque protegido e sempre organizado.</h1>
       <p>Acesse produtos, fornecedores, movimentações e relatórios em um único lugar.</p>
       <div className="auth-security"><b>✓</b><span><strong>Acesso seguro</strong><small>Senhas protegidas e sessões privadas</small></span></div>
+      <footer className="auth-powered">Powered by <strong>Siirius</strong></footer>
     </section>
     <section className="auth-panel">
       <div className="auth-card">

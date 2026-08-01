@@ -1,6 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { PwaRegister } from "./pwa-register";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#0b4d3f",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -12,7 +17,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
-    icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+    manifest: "/manifest.webmanifest",
+    icons: { icon: "/pwa-192.png", shortcut: "/pwa-192.png", apple: "/pwa-192.png" },
+    appleWebApp: { capable: true, statusBarStyle: "default", title: "Mercado+" },
     openGraph: { title, description, locale: "pt_BR", type: "website", images: [{ url: imageUrl, width: 1792, height: 1024, alt: "Mercado+ — gestão de estoque" }] },
     twitter: { card: "summary_large_image", title, description, images: [imageUrl] },
   };
@@ -21,7 +28,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        {children}
+        <PwaRegister />
+      </body>
     </html>
   );
 }

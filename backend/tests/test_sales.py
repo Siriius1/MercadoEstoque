@@ -2,12 +2,21 @@ import os
 from datetime import datetime
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg://postgres@127.0.0.1:5433/mercado_estoque_test"
+os.environ["MERCADO_INTERNAL_API_KEY"] = "test-internal-api-key"
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from backend.app.database import Base, engine
 from backend.app.main import app
+
+
+def api_headers(company: str) -> dict[str, str]:
+    return {
+        "X-Mercado-Tenant": company,
+        "X-Mercado-Internal-Key": "test-internal-api-key",
+        "X-Mercado-User-Role": "admin",
+    }
 
 
 def reset_database() -> None:
@@ -28,11 +37,46 @@ def create_supplier(client: TestClient) -> int:
     return response.json()["supplier"]["id"]
 
 
+def test_cors_preflight_does_not_require_tenant_header() -> None:
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/cash-registers/open",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,x-mercado-tenant",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_api_rejects_requests_without_internal_key() -> None:
+    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
+        response = client.get("/api/products")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Acesso interno não autorizado."
+
+
+def test_cashier_cannot_access_administrative_api_routes() -> None:
+    headers = api_headers("test-company")
+    headers["X-Mercado-User-Role"] = "cashier"
+    with TestClient(app, headers=headers) as client:
+        allowed = client.get("/api/products")
+        denied = client.get("/api/suppliers")
+
+    assert allowed.status_code == 200
+    assert denied.status_code == 403
+    assert denied.json()["detail"] == "Seu perfil não possui permissão para esta operação."
+
+
 def test_companies_have_independent_products_and_numbering() -> None:
     reset_database()
     with (
-        TestClient(app, headers={"X-Mercado-Tenant": "company-a"}) as company_a,
-        TestClient(app, headers={"X-Mercado-Tenant": "company-b"}) as company_b,
+        TestClient(app, headers=api_headers("company-a")) as company_a,
+        TestClient(app, headers=api_headers("company-b")) as company_b,
     ):
         supplier_a = create_supplier(company_a)
         first_a = company_a.post(
@@ -67,7 +111,7 @@ def test_companies_have_independent_products_and_numbering() -> None:
 
 def test_supplier_document_accepts_only_complete_cpf_or_cnpj() -> None:
     reset_database()
-    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
+    with TestClient(app, headers=api_headers("test-company")) as client:
         invalid = client.post(
             "/api/suppliers",
             json={"name": "Fornecedor inválido", "document": "12345678901abc"},
@@ -84,7 +128,7 @@ def test_supplier_document_accepts_only_complete_cpf_or_cnpj() -> None:
 
 def test_pix_settings_are_validated_and_persisted() -> None:
     reset_database()
-    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
+    with TestClient(app, headers=api_headers("test-company")) as client:
         default_settings = client.get("/api/payment-settings/pix").json()["settings"]
         assert default_settings["enabled"] is False
 
@@ -130,7 +174,7 @@ def open_cash_register(
 
 def test_product_requires_supplier_prices_and_initial_stock() -> None:
     reset_database()
-    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
+    with TestClient(app, headers=api_headers("test-company")) as client:
         response = client.post(
             "/api/products",
             json={
@@ -146,7 +190,7 @@ def test_product_requires_supplier_prices_and_initial_stock() -> None:
 
 def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
     reset_database()
-    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
+    with TestClient(app, headers=api_headers("test-company")) as client:
         supplier_id = create_supplier(client)
         product_response = client.post(
             "/api/products",
@@ -264,7 +308,7 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
 
 def test_one_insufficient_item_rolls_back_every_item() -> None:
     reset_database()
-    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
+    with TestClient(app, headers=api_headers("test-company")) as client:
         supplier_id = create_supplier(client)
         first = client.post(
             "/api/products",
@@ -312,7 +356,7 @@ def test_one_insufficient_item_rolls_back_every_item() -> None:
 
 def test_cash_closure_compares_only_cash_sales_since_last_closure() -> None:
     reset_database()
-    with TestClient(app, headers={"X-Mercado-Tenant": "test-company"}) as client:
+    with TestClient(app, headers=api_headers("test-company")) as client:
         supplier_id = create_supplier(client)
         product = client.post(
             "/api/products",

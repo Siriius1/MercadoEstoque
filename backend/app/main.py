@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from secrets import compare_digest
+import re
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -31,6 +33,17 @@ from .serializers import movement_json, number, product_json, supplier_json
 CENT = Decimal("0.01")
 tenant_context: ContextVar[str] = ContextVar("mercado_tenant", default="")
 TENANT_MODELS = (Supplier, Product, Sale, SaleItem, CashClosure, CashRegister, PaymentSettings, StockMovement)
+CASHIER_API_RULES = (
+    ("GET", re.compile(r"^/api/products$")),
+    ("GET", re.compile(r"^/api/payment-settings/pix$")),
+    ("GET", re.compile(r"^/api/cash-registers/status$")),
+    ("POST", re.compile(r"^/api/cash-registers/open$")),
+    ("POST", re.compile(r"^/api/sales$")),
+    ("GET", re.compile(r"^/api/sales/latest$")),
+    ("POST", re.compile(r"^/api/sales/\d+/cancel$")),
+    ("GET", re.compile(r"^/api/cash-closures/preview$")),
+    ("POST", re.compile(r"^/api/cash-closures$")),
+)
 
 
 def current_tenant() -> str:
@@ -129,7 +142,7 @@ def initialize_database() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    initialize_database()
+    # A estrutura do banco é aplicada por `alembic upgrade head` antes da API.
     yield
 
 
@@ -146,7 +159,27 @@ app.add_middleware(
 
 @app.middleware("http")
 async def identify_company(request: Request, call_next):
+    # O navegador envia OPTIONS antes de requisições com cabeçalhos próprios.
+    # Essa checagem não carrega o tenant; o CORS valida e libera a chamada real.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        configured_key = settings.mercado_internal_api_key
+        received_key = request.headers.get("X-Mercado-Internal-Key", "")
+        if not configured_key or not compare_digest(received_key, configured_key):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Acesso interno não autorizado."}, status_code=401)
     if request.url.path.startswith("/api/") and request.url.path != "/api/auth/google-profile":
+        role = request.headers.get("X-Mercado-User-Role", "")
+        if role not in {"admin", "cashier"}:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Perfil de acesso inválido."}, status_code=403)
+        if role == "cashier" and not any(
+            method == request.method and pattern.fullmatch(request.url.path)
+            for method, pattern in CASHIER_API_RULES
+        ):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Seu perfil não possui permissão para esta operação."}, status_code=403)
         company_key = request.headers.get("X-Mercado-Tenant", "").strip()
         if not company_key:
             from fastapi.responses import JSONResponse

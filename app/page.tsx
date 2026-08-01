@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ auth?: string; token?: string; welcome?: string }> }) {
   const user = await getSessionUser();
-  if (user) return <Dashboard user={user} />;
+  if (user) return <Dashboard user={{ name: user.name, email: user.email, role: user.role, companyName: user.companyName, isDemo: user.isDemo }} />;
   const params = await searchParams;
   const registrationOpen = true;
   const allowed = ["login", "register", "forgot", "reset", "verify", "invite", "pending", "approve", "reject"] as const;

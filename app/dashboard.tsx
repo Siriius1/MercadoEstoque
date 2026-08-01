@@ -20,7 +20,7 @@ type Theme = "light"|"dark";
 const money = (value = 0) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const dateTime = (value:string) => { const normalized=value.replace(" ","T"); const hasTimezone=/Z$|[+-]\d{2}:\d{2}$/.test(normalized); return new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(hasTimezone?normalized:`${normalized}Z`)); };
 const initials = (name:string) => name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase();
-export default function Dashboard({user}:{user:{name:string;email:string;role:string;companyKey:string;companyName:string;isDemo:boolean}}) {
+export default function Dashboard({user}:{user:{name:string;email:string;role:string;companyName:string;isDemo:boolean}}) {
   const isCashier = user.role === "cashier";
   const [section, setSection] = useState<Section>(isCashier ? "vendas" : "painel");
   const [products, setProducts] = useState<Product[]>([]);
@@ -40,28 +40,28 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   const load = useCallback(async () => {
     try {
       if (user.isDemo) {
-        const demo = await mercadoApiFetch("/api/demo/seed", user.companyKey, { method:"POST" });
+        const demo = await mercadoApiFetch("/api/demo/seed", { method:"POST" });
         if (!demo.ok) throw new Error();
       }
       if (isCashier) {
-        const response = await mercadoApiFetch("/api/products", user.companyKey);
+        const response = await mercadoApiFetch("/api/products");
         if (!response.ok) throw new Error();
         const data = await response.json();
         setProducts(data.products);
         return;
       }
       const [p, s, m, d] = await Promise.all([
-        mercadoApiFetch("/api/products", user.companyKey),
-        mercadoApiFetch("/api/suppliers", user.companyKey),
-        mercadoApiFetch("/api/movements", user.companyKey),
-        mercadoApiFetch("/api/dashboard", user.companyKey),
+        mercadoApiFetch("/api/products"),
+        mercadoApiFetch("/api/suppliers"),
+        mercadoApiFetch("/api/movements"),
+        mercadoApiFetch("/api/dashboard"),
       ]);
       if (![p,s,m,d].every(response => response.ok)) throw new Error();
       const [pd,sd,md,dd] = await Promise.all([p.json(), s.json(), m.json(), d.json()]);
       setProducts(pd.products); setSuppliers(sd.suppliers); setMovements(md.movements); setSummary(dd.summary); setRecent(dd.recent);
     } catch { setNotice("Não foi possível carregar o banco de dados."); }
     finally { setLoading(false); }
-  }, [isCashier, user.companyKey, user.isDemo]);
+  }, [isCashier, user.isDemo]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(""), 4500); return () => clearTimeout(timer); } }, [notice]);
@@ -91,7 +91,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   const closeModal = () => { setModal(null); setEditing(null); };
 
   async function submit(endpoint:string, data:Record<string, FormDataEntryValue>, method="POST") {
-    const response = await mercadoApiFetch(endpoint, user.companyKey, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
+    const response = await mercadoApiFetch(endpoint, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(data) });
     const result = await response.json();
     if (!response.ok) {
       const validationMessage=Array.isArray(result.detail)&&result.detail[0]?.msg
@@ -111,7 +111,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   }
 
   async function executeDelete(target:DeleteTarget, hideSupplierWarning = false) {
-    const response = await mercadoApiFetch(`/api/${target.kind}/${target.id}`, user.companyKey, { method:"DELETE" });
+    const response = await mercadoApiFetch(`/api/${target.kind}/${target.id}`, { method:"DELETE" });
     const result = await response.json();
     if (!response.ok) { setNotice(result.error || "Não foi possível excluir."); return; }
     if (hideSupplierWarning && target.kind === "suppliers") localStorage.setItem("mercado-hide-supplier-delete-warning", "true");
@@ -159,13 +159,13 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
         {notice && <div className="toast">{notice}</div>}
         {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
           {!isCashier && section === "painel" && <DashboardSection summary={summary} recent={recent} lowProducts={lowProducts} onNavigate={setSection} onMovement={() => openNew("movement")} />}
-          {section === "vendas" && <SalesSection products={products} user={user} companyKey={user.companyKey} onSaleCompleted={load} />}
+          {section === "vendas" && <SalesSection products={products} user={user} onSaleCompleted={load} />}
           {!isCashier && section === "produtos" && <ProductsSection products={filteredProducts} search={search} setSearch={setSearch} onNew={() => openNew("product")} onEdit={p => openEdit("product", p)} onDelete={p => requestDelete({ kind:"products", id:p.id, name:p.name, linkedCount:0 })} />}
           {!isCashier && section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={s => requestDelete({ kind:"suppliers", id:s.id, name:s.name, linkedCount:s.productCount })} />}
           {!isCashier && section === "funcionarios" && <EmployeesSection currentUser={user} />}
           {!isCashier && section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
           {!isCashier && section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
-          {!isCashier && section === "configuracoes" && <PaymentSettingsSection companyKey={user.companyKey} />}
+          {!isCashier && section === "configuracoes" && <PaymentSettingsSection />}
         </>}
       </div>
     </main>

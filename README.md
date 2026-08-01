@@ -101,8 +101,9 @@ Para iniciar a versão local completa, dê dois cliques em
 Para encerrar os serviços, use `PARAR-MERCADO.cmd`.
 
 O PostgreSQL local usa a porta `5433` e a API fica em
-`http://127.0.0.1:8000/docs`. Esses serviços não publicam alterações no site
-online.
+`http://127.0.0.1:8002/docs`. O navegador acessa essa API somente pela rota
+autenticada do Mercado+; chamadas diretas exigem `MERCADO_INTERNAL_API_KEY`.
+Esses serviços não publicam alterações no site online.
 
 ## Learn More
 

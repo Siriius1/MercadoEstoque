@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: mercado-estoque-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    # O plano gratuito não oferece pre-deploy; por isso a migração idempotente roda antes da API.
+    startCommand: alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: MERCADO_INTERNAL_API_KEY
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false

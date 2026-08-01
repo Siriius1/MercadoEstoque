@@ -31,6 +31,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!backend/.env.example
 
 # vercel
 .vercel
@@ -41,6 +43,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/backups/
 /backend/*.log
 /.postgres-data/
 /.local-pids/

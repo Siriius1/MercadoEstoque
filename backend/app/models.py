@@ -11,8 +11,8 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
-    UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,9 +25,10 @@ quantity_type = Numeric(14, 3)
 
 class Supplier(Base):
     __tablename__ = "suppliers"
+    __table_args__ = (Index("suppliers_company_idx", "company_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
     name: Mapped[str] = mapped_column(String(180))
     document: Mapped[str] = mapped_column(String(30), default="")
     contact: Mapped[str] = mapped_column(String(120), default="")
@@ -45,16 +46,17 @@ class Product(Base):
     __table_args__ = (
         CheckConstraint("current_stock >= 0", name="products_stock_nonnegative"),
         CheckConstraint("minimum_stock >= 0", name="products_minimum_nonnegative"),
-        UniqueConstraint("company_key", "sku", name="products_company_sku_unique"),
-        UniqueConstraint("company_key", "barcode", name="products_company_barcode_unique"),
+        Index("products_company_idx", "company_key"),
+        Index("products_company_sku_unique", "company_key", "sku", unique=True),
+        Index("products_company_barcode_unique", "company_key", "barcode", unique=True, postgresql_where=text("barcode IS NOT NULL")),
         Index("products_name_idx", "name"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
-    sku: Mapped[str] = mapped_column(String(20), index=True)
-    barcode: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    name: Mapped[str] = mapped_column(String(180), index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
+    sku: Mapped[str] = mapped_column(String(20))
+    barcode: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    name: Mapped[str] = mapped_column(String(180))
     category: Mapped[str] = mapped_column(String(100), default="Mercearia")
     unit: Mapped[str] = mapped_column(String(12), default="un")
     cost_price: Mapped[Decimal] = mapped_column(money_type, default=0)
@@ -76,11 +78,12 @@ class Sale(Base):
     __table_args__ = (
         CheckConstraint("status IN ('completed', 'cancelled')", name="sales_status_valid"),
         CheckConstraint("payment_method IN ('dinheiro', 'cartao', 'pix')", name="sales_payment_valid"),
+        Index("sales_company_idx", "company_key"),
         Index("sales_created_idx", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
     status: Mapped[str] = mapped_column(String(20), default="completed")
     payment_method: Mapped[str] = mapped_column(String(20))
     total: Mapped[Decimal] = mapped_column(money_type)
@@ -96,9 +99,10 @@ class Sale(Base):
 
 class SaleItem(Base):
     __tablename__ = "sale_items"
+    __table_args__ = (Index("sale_items_company_idx", "company_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
     sale_id: Mapped[int] = mapped_column(ForeignKey("sales.id", ondelete="CASCADE"), index=True)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
     product_name: Mapped[str] = mapped_column(String(180))
@@ -114,11 +118,12 @@ class SaleItem(Base):
 class CashClosure(Base):
     __tablename__ = "cash_closures"
     __table_args__ = (
+        Index("cash_closures_company_idx", "company_key"),
         Index("cash_closures_operator_period_idx", "operator_email", "period_end"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
     operator_name: Mapped[str] = mapped_column(String(180))
     operator_email: Mapped[str] = mapped_column(String(180))
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -135,11 +140,12 @@ class CashRegister(Base):
     __tablename__ = "cash_registers"
     __table_args__ = (
         CheckConstraint("status IN ('open', 'closed')", name="cash_registers_status_valid"),
+        Index("cash_registers_company_idx", "company_key"),
         Index("cash_registers_operator_status_idx", "operator_email", "status", "opened_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
     operator_name: Mapped[str] = mapped_column(String(180))
     operator_email: Mapped[str] = mapped_column(String(180))
     status: Mapped[str] = mapped_column(String(20), default="open")
@@ -152,9 +158,13 @@ class CashRegister(Base):
 
 class PaymentSettings(Base):
     __tablename__ = "payment_settings"
+    __table_args__ = (
+        Index("payment_settings_company_idx", "company_key"),
+        Index("payment_settings_company_unique", "company_key", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", unique=True, index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
     pix_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     pix_key_type: Mapped[str] = mapped_column(String(20), default="cnpj")
     pix_key: Mapped[str] = mapped_column(String(180), default="")
@@ -167,11 +177,12 @@ class StockMovement(Base):
     __tablename__ = "stock_movements"
     __table_args__ = (
         CheckConstraint("type IN ('entrada', 'saida', 'ajuste')", name="movements_type_valid"),
+        Index("stock_movements_company_idx", "company_key"),
         Index("movements_created_idx", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_key: Mapped[str] = mapped_column(String(64), default="legacy", index=True)
+    company_key: Mapped[str] = mapped_column(String(64), default="legacy")
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id", ondelete="SET NULL"), nullable=True, index=True)
     type: Mapped[str] = mapped_column(String(20))

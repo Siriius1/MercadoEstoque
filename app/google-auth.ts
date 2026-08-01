@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { getMercadoApiUrl, getMercadoInternalApiKey } from "./mercado-server";
 
 type GooglePayload = {
   aud: string;
@@ -48,9 +49,12 @@ function validateGooglePayload(payload: GooglePayload) {
 }
 
 async function verifyWithLocalApi(credential: string) {
-  const response = await fetch("http://127.0.0.1:8002/api/auth/google-profile", {
+  const response = await fetch(`${getMercadoApiUrl()}/api/auth/google-profile`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Mercado-Internal-Key": getMercadoInternalApiKey(),
+    },
     body: JSON.stringify({ credential }),
   });
   const result = await response.json() as {

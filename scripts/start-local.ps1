@@ -8,6 +8,8 @@ $pidDirectory = Join-Path $projectRoot ".local-pids"
 $apiPort = 8002
 
 & (Join-Path $PSScriptRoot "setup-postgres.ps1")
+& (Join-Path $PSScriptRoot "backup-postgres.ps1") -SkipIfToday
+& $python -m alembic -c (Join-Path $projectRoot "alembic.ini") upgrade head
 New-Item -ItemType Directory -Path $pidDirectory -Force | Out-Null
 
 function Test-LocalPort([int]$Port) {
