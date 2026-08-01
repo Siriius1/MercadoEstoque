@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { getD1 } from "../db";
 
 export const SESSION_COOKIE = "mercado_session";
+const PASSWORD_ITERATIONS = 100_000;
 const encoder = new TextEncoder();
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -29,15 +30,21 @@ export async function hashToken(token: string) {
 export async function hashPassword(password: string) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 210_000 }, key, 256);
-  return `pbkdf2_sha256$210000$${bytesToBase64Url(salt)}$${bytesToBase64Url(new Uint8Array(bits))}`;
+  // O runtime de produção limita uma derivação PBKDF2 a 100 mil ciclos.
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: PASSWORD_ITERATIONS }, key, 256);
+  return `pbkdf2_sha256$${PASSWORD_ITERATIONS}$${bytesToBase64Url(salt)}$${bytesToBase64Url(new Uint8Array(bits))}`;
 }
 
 export async function verifyPassword(password: string, stored: string) {
   const [algorithm, iterationsText, saltText, expectedText] = stored.split("$");
   if (algorithm !== "pbkdf2_sha256" || !iterationsText || !saltText || !expectedText) return false;
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: base64UrlToBytes(saltText), iterations: Number(iterationsText) }, key, 256);
+  let bits: ArrayBuffer;
+  try {
+    bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: base64UrlToBytes(saltText), iterations: Number(iterationsText) }, key, 256);
+  } catch {
+    return false;
+  }
   const actual = new Uint8Array(bits);
   const expected = base64UrlToBytes(expectedText);
   if (actual.length !== expected.length) return false;

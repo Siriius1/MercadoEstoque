@@ -6,6 +6,16 @@ type Mode = "login" | "register" | "forgot" | "reset" | "verify" | "invite" | "p
 
 const normalizeEmailInput = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 
+async function readResponse(response: Response) {
+  const body = await response.text();
+  if (!body) return { error: response.ok ? "O servidor retornou uma resposta vazia." : "O servidor não conseguiu concluir esta operação." };
+  try {
+    return JSON.parse(body) as { error?: string; message?: string; previewUrl?: string; rejectPreviewUrl?: string; status?: string };
+  } catch {
+    return { error: "O servidor retornou uma resposta inválida." };
+  }
+}
+
 type GoogleAccounts = { id: { initialize: (options: { client_id: string; callback: (response: { credential: string }) => void; auto_select?: boolean; cancel_on_tap_outside?: boolean }) => void; renderButton: (element: HTMLElement, options: Record<string, string | number>) => void } };
 
 declare global {
@@ -63,7 +73,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
     setBusy(true); setError(""); setMessage(""); setPreviewUrl("");
     try {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const result = await response.json() as { error?: string; message?: string; previewUrl?: string; rejectPreviewUrl?: string; status?: string };
+      const result = await readResponse(response);
       if (!response.ok) throw new Error(result.error || "Não foi possível concluir.");
       if (endpoint.endsWith("/login") || endpoint.endsWith("/google")) { window.location.href = "/"; return; }
       if (endpoint.endsWith("/accept-invite")) { window.location.href = "/?auth=login&welcome=1"; return; }
@@ -100,7 +110,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
     setError("");
     try {
       const response = await fetch("/api/auth/demo", { method: "POST" });
-      const result = await response.json() as { error?: string };
+      const result = await readResponse(response);
       if (!response.ok) throw new Error(result.error || "Não foi possível abrir a demonstração.");
       window.location.href = "/";
     } catch (caught) {
