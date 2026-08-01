@@ -10,11 +10,11 @@ const normalizeEmailInput = (value: string) => value.toLowerCase().replace(/\s+/
 
 async function readResponse(response: Response) {
   const body = await response.text();
-  if (!body) return { error: response.ok ? "O servidor retornou uma resposta vazia." : "O servidor não conseguiu concluir esta operação." };
+  if (!body) return { error: response.ok ? "Não recebemos a confirmação esperada." : "Não foi possível concluir esta operação agora." };
   try {
     return JSON.parse(body) as { error?: string; message?: string; previewUrl?: string; rejectPreviewUrl?: string; status?: string };
   } catch {
-    return { error: "O servidor retornou uma resposta inválida." };
+    return { error: "Não foi possível entender a resposta recebida. Tente novamente." };
   }
 }
 

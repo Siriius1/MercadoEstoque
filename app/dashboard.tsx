@@ -161,7 +161,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
       : `Existem ${summary.lowStock} pendências`;
 
   return <div className="app-shell">
-    {apiWaking && <div className="server-wake" role="status" aria-live="polite"><div className="server-wake-card"><span className="server-wake-orbit"><i/><i/><b>+</b></span><small>PREPARANDO O MERCADO+</small><h2>O servidor está iniciando</h2><p>O plano gratuito descansa quando fica sem uso. Estamos acordando a API e conectando ao seu estoque.</p><div className="server-wake-progress"><i/></div><em>Isso pode levar até 50 segundos no primeiro acesso.</em></div></div>}
+    {apiWaking && <div className="server-wake" role="status" aria-live="polite"><div className="server-wake-card"><span className="server-wake-orbit"><i/><i/><b>+</b></span><small>PREPARANDO O MERCADO+</small><h2>Estamos preparando tudo para você</h2><p>Seus dados estão sendo organizados e posicionados para deixar o ambiente pronto para uso.</p><div className="server-wake-progress"><i/></div><em>Em instantes, seu espaço estará pronto.</em></div></div>}
     {menuOpen && <button className="menu-overlay" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
     <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
       <div className="brand"><span className="brand-mark">+</span><div><strong>Mercado<span>+</span></strong><small>GESTÃO DE ESTOQUE</small></div></div>

@@ -34,7 +34,7 @@ export async function mercadoApiFetch(path: string, init: RequestInit = {}) {
       wakingRequests.add(requestId);
       announceWakeState();
     }
-    throw new Error("A API do Mercado+ continua indisponível.");
+    throw new Error("Seus dados ainda estão sendo preparados. Tente novamente em instantes.");
   } finally {
     wakingRequests.delete(requestId);
     announceWakeState();

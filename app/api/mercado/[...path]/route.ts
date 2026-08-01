@@ -73,7 +73,7 @@ async function proxyToMercadoApi(request: Request, context: RouteContext) {
     responseHeaders.set("Content-Type", upstream.headers.get("content-type") || "application/json; charset=utf-8");
     return new Response(await upstream.arrayBuffer(), { status: upstream.status, headers: responseHeaders });
   } catch {
-    return Response.json({ detail: "A API do Mercado+ está temporariamente indisponível." }, { status: 502 });
+    return Response.json({ detail: "Não foi possível carregar seus dados agora. Tente novamente em instantes." }, { status: 502 });
   }
 }
 
