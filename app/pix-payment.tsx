@@ -38,6 +38,8 @@ export default function PixPayment({
 
   return <div className={`pix-payment-display ${preview ? "preview" : ""}`}>
     <div className="pix-qr-frame">
+      {/* O QR Code é um data URL gerado no navegador; next/image não traz otimização aqui. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       {qrCode ? <img src={qrCode} alt="QR Code PIX para pagamento" /> : <span>Gerando QR Code...</span>}
     </div>
     <div className="pix-payment-info">

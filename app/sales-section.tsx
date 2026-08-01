@@ -95,6 +95,8 @@ export default function SalesSection({
 
   useEffect(() => {
     void loadCashRegisterStatus();
+    // A troca do operador exige uma nova consulta; a função usa apenas o e-mail atual.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.email]);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { getD1 } from "../../../../db";
 import { getSessionUser } from "../../../auth";
+import { isValidFullName, normalizeFullName } from "../../../validation";
 
 async function requireAdmin(request: Request) {
   const user = await getSessionUser(request);
@@ -15,9 +16,9 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const employeeId = Number(id);
   if (!Number.isInteger(employeeId)) return Response.json({ error: "Funcionário inválido." }, { status: 400 });
   const body = await request.json() as Record<string, unknown>;
-  const name = String(body.name ?? "").trim();
+  const name = normalizeFullName(body.name);
   const role = body.role === "admin" ? "admin" : "cashier";
-  if (name.length < 2) return Response.json({ error: "Informe o nome completo." }, { status: 400 });
+  if (!isValidFullName(name)) return Response.json({ error: "Informe o nome e sobrenome do funcionário." }, { status: 400 });
   const d1 = await getD1();
   const currentEmployee = await d1.prepare("SELECT role FROM users WHERE id = ? AND company_id = ?").bind(employeeId, access.user!.companyId).first<{ role: string }>();
   if (!currentEmployee) return Response.json({ error: "Funcionário não encontrado." }, { status: 404 });

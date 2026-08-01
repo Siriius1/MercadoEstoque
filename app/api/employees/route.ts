@@ -1,7 +1,7 @@
 import { getD1 } from "../../../db";
 import { getSessionUser, randomToken } from "../../auth";
 import { createEmployeeInvite } from "../../employee-invite";
-import { isValidEmail, normalizeEmail } from "../../validation";
+import { isValidEmail, isValidFullName, normalizeEmail, normalizeFullName } from "../../validation";
 
 async function requireAdmin(request: Request) {
   const user = await getSessionUser(request);
@@ -22,10 +22,10 @@ export async function POST(request: Request) {
   const access = await requireAdmin(request);
   if (access.response) return access.response;
   const body = await request.json() as Record<string, unknown>;
-  const name = String(body.name ?? "").trim();
+  const name = normalizeFullName(body.name);
   const email = normalizeEmail(body.email);
   const role = body.role === "admin" ? "admin" : "cashier";
-  if (name.length < 2) return Response.json({ error: "Informe o nome completo." }, { status: 400 });
+  if (!isValidFullName(name)) return Response.json({ error: "Informe o nome e sobrenome do funcionário." }, { status: 400 });
   if (!isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
   const d1 = await getD1();
   const existing = await d1.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();

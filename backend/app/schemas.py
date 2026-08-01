@@ -16,7 +16,7 @@ class ProductInput(BaseModel):
     costPrice: Decimal = Field(gt=0)
     salePrice: Decimal = Field(gt=0)
     currentStock: Decimal = Field(ge=0, multiple_of=1)
-    minimumStock: Decimal = Field(default=5, ge=0)
+    minimumStock: Decimal = Field(default=5, ge=0, multiple_of=1)
     supplierId: int | None = None
 
     @field_validator("barcode", mode="before")
@@ -28,6 +28,14 @@ class ProductInput(BaseModel):
     @classmethod
     def empty_supplier_to_none(cls, value: object) -> object:
         return None if value in ("", None) else value
+
+    @field_validator("name")
+    @classmethod
+    def product_name_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Informe o nome do produto.")
+        return value
 
 
 class SupplierInput(BaseModel):
@@ -52,11 +60,19 @@ class SupplierInput(BaseModel):
             return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
         raise ValueError("Informe um CPF com 11 números ou um CNPJ com 14 números.")
 
+    @field_validator("name")
+    @classmethod
+    def supplier_name_must_not_be_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Informe o nome do fornecedor.")
+        return value
+
 
 class MovementInput(BaseModel):
     productId: int
     type: Literal["entrada", "saida", "ajuste"]
-    quantity: Decimal = Field(ge=0)
+    quantity: Decimal = Field(ge=0, multiple_of=1)
     unitCost: Decimal = Field(default=0, ge=0)
     reason: str = Field(default="", max_length=240)
     notes: str = ""
@@ -65,7 +81,7 @@ class MovementInput(BaseModel):
 
 class SaleLineInput(BaseModel):
     productId: int
-    quantity: Decimal = Field(gt=0)
+    quantity: Decimal = Field(gt=0, multiple_of=1)
 
 
 class SaleInput(BaseModel):

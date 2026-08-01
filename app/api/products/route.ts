@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../db";
 import { movements, products, suppliers } from "../../../db/schema";
 import { getSessionUser } from "../../auth";

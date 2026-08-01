@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { isValidFullName, normalizeFullName } from "./validation";
 
 type Mode = "login" | "register" | "forgot" | "reset" | "verify" | "invite" | "pending" | "approve" | "reject";
@@ -36,13 +37,11 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
   useEffect(() => {
     if (initialMode !== "verify") return;
     void request("/api/auth/verify", { token });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMode, token]);
 
   useEffect(() => {
     if (initialMode !== "approve" && initialMode !== "reject") return;
     void request("/api/auth/review-registration", { token, action: initialMode });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMode, token]);
 
   useEffect(() => {
@@ -67,7 +66,6 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
     script.onload = render;
     document.head.appendChild(script);
     return () => { script.onload = null; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMode, googleClientId]);
 
   async function request(endpoint: string, payload: Record<string, unknown>) {
@@ -102,7 +100,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
       </div>
       <p className="approval-note"><span/>É seguro fechar esta página. Avisaremos assim que houver uma decisão.</p>
       {previewUrl && <div className="approval-local-test"><small>TESTE LOCAL</small><p>Como o envio real ainda não está ativo, use estes links para testar o fluxo:</p><div><a href={previewUrl}>Aprovar solicitação</a>{rejectPreviewUrl && <a className="reject" href={rejectPreviewUrl}>Recusar</a>}</div></div>}
-      <a className="approval-back" href="/">← Voltar para o login</a>
+      <Link className="approval-back" href="/">← Voltar para o login</Link>
     </section>
   </main>;
 
@@ -179,8 +177,8 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
             <button className="auth-submit" disabled={busy}>{busy ? "Aguarde..." : initialMode === "register" ? "Solicitar cadastro" : initialMode === "forgot" ? "Enviar link" : initialMode === "reset" ? "Alterar senha" : initialMode === "invite" ? "Ativar acesso" : "Entrar"}</button>
           </form>}
         <div className="auth-links">
-          {initialMode === "login" && <><a href="/?auth=forgot">Esqueci minha senha</a>{registrationOpen && <span>Primeiro acesso? <a href="/?auth=register">Criar conta do proprietário</a></span>}</>}
-          {initialMode !== "login" && <a href="/">← Voltar para o login</a>}
+          {initialMode === "login" && <><Link href="/?auth=forgot">Esqueci minha senha</Link>{registrationOpen && <span>Primeiro acesso? <Link href="/?auth=register">Criar conta do proprietário</Link></span>}</>}
+          {initialMode !== "login" && <Link href="/">← Voltar para o login</Link>}
         </div>
       </div>
     </section>

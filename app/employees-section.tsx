@@ -43,6 +43,7 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
     setLoading(false);
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
 
   const filtered = useMemo(() => employees.filter(employee =>
@@ -132,7 +133,7 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
         <p>{editing ? "Atualize o nome e as permissões desta conta." : "Cadastre o funcionário. Ele criará a própria senha pelo convite."}</p>
         <form onSubmit={save}>
           <div className="form-grid">
-            <label className="span-2">Nome completo<input name="name" required minLength={2} defaultValue={editing?.name} /></label>
+            <label className="span-2">Nome completo<input name="name" required minLength={3} placeholder="Nome e sobrenome" defaultValue={editing?.name} /></label>
             <label>E-mail<input name="email" type="email" required readOnly={Boolean(editing)} className={editing ? "readonly-code" : ""} defaultValue={editing?.email} onBlur={event => { event.currentTarget.value = normalizeEmail(event.currentTarget.value); }} /></label>
             <label>Função<select name="role" required defaultValue={editing?.role || "cashier"}><option value="cashier">Operador de caixa</option><option value="admin">Administrador</option></select></label>
             {!editing && <div className="employee-invite-info span-2"><strong>✉ Convite seguro</strong><p>O funcionário receberá um link válido por 48 horas para criar a própria senha. Ele também poderá entrar com o Google usando este mesmo e-mail.</p></div>}

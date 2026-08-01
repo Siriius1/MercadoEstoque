@@ -188,6 +188,71 @@ def test_product_requires_supplier_prices_and_initial_stock() -> None:
         assert response.status_code == 422
 
 
+def test_names_cannot_contain_only_spaces() -> None:
+    reset_database()
+    with TestClient(app, headers=api_headers("test-company")) as client:
+        supplier = client.post("/api/suppliers", json={"name": "   "})
+        assert supplier.status_code == 422
+
+
+def test_stock_operations_accept_only_whole_units() -> None:
+    reset_database()
+    with TestClient(app, headers=api_headers("test-company")) as client:
+        supplier_id = create_supplier(client)
+        product = client.post(
+            "/api/products",
+            json={
+                "name": "Produto unitário",
+                "costPrice": 2,
+                "salePrice": 5,
+                "currentStock": 10,
+                "supplierId": supplier_id,
+            },
+        ).json()["product"]
+
+        fractional_movement = client.post(
+            "/api/movements",
+            json={"productId": product["id"], "type": "entrada", "quantity": 0.5},
+        )
+        assert fractional_movement.status_code == 422
+
+        open_cash_register(client)
+        fractional_sale = client.post(
+            "/api/sales",
+            json={
+                "items": [{"productId": product["id"], "quantity": 1.5}],
+                "paymentMethod": "dinheiro",
+                "operatorName": "Operador Teste",
+                "operatorEmail": "operador@teste.com",
+            },
+        )
+        assert fractional_sale.status_code == 422
+        assert client.get("/api/products").json()["products"][0]["currentStock"] == 10
+
+
+def test_deleting_supplier_also_deletes_linked_products() -> None:
+    reset_database()
+    with TestClient(app, headers=api_headers("test-company")) as client:
+        supplier_id = create_supplier(client)
+        created = client.post(
+            "/api/products",
+            json={
+                "name": "Produto vinculado",
+                "costPrice": 2,
+                "salePrice": 5,
+                "currentStock": 10,
+                "supplierId": supplier_id,
+            },
+        )
+        assert created.status_code == 201
+
+        deleted = client.delete(f"/api/suppliers/{supplier_id}")
+        assert deleted.status_code == 200
+        assert deleted.json()["deletedProducts"] == 1
+        assert client.get("/api/products").json()["products"] == []
+        assert client.get("/api/suppliers").json()["suppliers"] == []
+
+
 def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
     reset_database()
     with TestClient(app, headers=api_headers("test-company")) as client:
