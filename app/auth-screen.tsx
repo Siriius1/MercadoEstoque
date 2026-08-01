@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { isValidFullName, normalizeFullName } from "./validation";
 
 type Mode = "login" | "register" | "forgot" | "reset" | "verify" | "invite" | "pending" | "approve" | "reject";
 
@@ -122,6 +123,13 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));
+    if (initialMode === "register") {
+      data.name = normalizeFullName(data.name);
+      if (!isValidFullName(data.name)) {
+        setError("Informe seu nome e sobrenome.");
+        return;
+      }
+    }
     const password = String(data.password ?? "");
     const confirmation = String(data.confirmation ?? "");
     if ((initialMode === "register" || initialMode === "reset" || initialMode === "invite") && password !== confirmation) {
@@ -161,7 +169,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
         </>}
         {(initialMode === "verify" || reviewing) ? <><div className={`auth-result ${error ? "error" : ""}`}>{busy ? "Processando..." : message || error}</div>{previewUrl && <a className="auth-preview" href={previewUrl}>Abrir e-mail de resposta local →</a>}</> :
           <form onSubmit={submit}>
-            {initialMode === "register" && <label>Nome completo<input name="name" required autoComplete="name" placeholder="Seu nome"/></label>}
+            {initialMode === "register" && <label>Nome completo<input name="name" required minLength={3} autoComplete="name" placeholder="Nome e sobrenome"/></label>}
             {(initialMode === "login" || initialMode === "register" || initialMode === "forgot") && <label>E-mail<input name="email" type="email" required autoComplete="email" placeholder="voce@empresa.com.br" onInput={event => { event.currentTarget.value = normalizeEmailInput(event.currentTarget.value); }}/></label>}
             {(initialMode === "login" || initialMode === "register" || initialMode === "reset" || initialMode === "invite") && <label>Senha<input name="password" type="password" required minLength={8} autoComplete={initialMode === "login" ? "current-password" : "new-password"} placeholder="Mínimo de 8 caracteres"/></label>}
             {(initialMode === "register" || initialMode === "reset" || initialMode === "invite") && <label>Confirmar senha<input name="confirmation" type="password" required minLength={8} autoComplete="new-password" placeholder="Digite a senha novamente"/></label>}

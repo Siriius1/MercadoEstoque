@@ -6,6 +6,16 @@ export function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(value);
 }
 
+export function normalizeFullName(value: unknown) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+export function isValidFullName(value: unknown) {
+  const parts = normalizeFullName(value).split(" ").filter(Boolean);
+  // Exigimos ao menos nome e sobrenome, aceitando acentos, hifens e apóstrofos.
+  return parts.length >= 2 && parts.every(part => /^[\p{L}][\p{L}'’-]*$/u.test(part));
+}
+
 export function formatPhone(value: unknown) {
   const digits = String(value ?? "").replace(/\D/g, "").slice(0, 11);
   if (!digits) return "";

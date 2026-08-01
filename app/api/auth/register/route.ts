@@ -1,14 +1,14 @@
 import { getD1 } from "../../../../db";
 import { hashPassword, hashToken, randomToken } from "../../../auth";
 import { sendOwnerApprovalRequest } from "../../../mailer";
-import { isValidEmail, normalizeEmail } from "../../../validation";
+import { isValidEmail, isValidFullName, normalizeEmail, normalizeFullName } from "../../../validation";
 
 export async function POST(request: Request) {
   const body = await request.json() as Record<string, unknown>;
-  const name = String(body.name ?? "").trim();
+  const name = normalizeFullName(body.name);
   const email = normalizeEmail(body.email);
   const password = String(body.password ?? "");
-  if (name.length < 2) return Response.json({ error: "Informe seu nome." }, { status: 400 });
+  if (!isValidFullName(name)) return Response.json({ error: "Informe seu nome e sobrenome." }, { status: 400 });
   if (!isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
   if (password.length < 8) return Response.json({ error: "A senha precisa ter pelo menos 8 caracteres." }, { status: 400 });
 

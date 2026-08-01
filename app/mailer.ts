@@ -51,7 +51,23 @@ export async function sendOwnerApprovalRequest({ applicantName, applicantEmail, 
       from,
       to: [to],
       subject: `Nova solicitação de cadastro — ${applicantName}`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#173c32"><div style="padding:28px;border:1px solid #e5e0d4;border-radius:18px;background:#fffdf8"><p style="font-size:12px;letter-spacing:2px;color:#a67e13;font-weight:700">MERCADO+</p><h1 style="font-family:Georgia,serif;margin:8px 0 18px">Novo proprietário aguardando sua decisão</h1><p>Uma pessoa solicitou acesso para criar um estabelecimento:</p><div style="background:#f5f3eb;border-radius:12px;padding:16px;margin:18px 0"><strong>${escapeHtml(applicantName)}</strong><br><span style="color:#66736e">${escapeHtml(applicantEmail)}</span></div><p><a href="${escapeHtml(approveUrl)}" style="display:inline-block;background:#f2c744;color:#123b32;padding:12px 18px;border-radius:9px;text-decoration:none;font-weight:700;margin-right:8px">Aprovar cadastro</a><a href="${escapeHtml(rejectUrl)}" style="display:inline-block;border:1px solid #d7a69d;color:#9d3d2d;padding:11px 18px;border-radius:9px;text-decoration:none;font-weight:700">Recusar</a></p><p style="font-size:12px;color:#77817d;margin-top:22px">Os links são de uso único e expiram em 48 horas.</p></div></div>`,
+      // Texto puro impede que o rastreamento troque os endereços por awstrack.me.
+      // O aplicativo de e-mail ainda transforma as URLs reais em links clicáveis.
+      text: [
+        "MERCADO+ | NOVA SOLICITAÇÃO DE CADASTRO",
+        "",
+        "Um novo proprietário está aguardando sua decisão:",
+        applicantName,
+        applicantEmail,
+        "",
+        "APROVAR CADASTRO:",
+        approveUrl,
+        "",
+        "RECUSAR CADASTRO:",
+        rejectUrl,
+        "",
+        "Os links são de uso único e expiram em 48 horas.",
+      ].join("\n"),
     }),
   });
   if (!response.ok) throw new Error("O serviço de e-mail recusou o envio da solicitação.");

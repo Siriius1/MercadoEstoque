@@ -46,6 +46,22 @@ test("bloqueia o acesso à passagem da API sem sessão", async () => {
   assert.deepEqual(await response.json(), { detail: "Sua sessão expirou. Entre novamente." });
 });
 
+test("exige nome e sobrenome no cadastro do proprietário", async () => {
+  const app = await worker();
+  const response = await app.fetch(
+    new Request("http://localhost/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Leonardo", email: "leonardo@example.com", password: "senha-segura" }),
+    }),
+    environment,
+    executionContext,
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Informe seu nome e sobrenome." });
+});
+
 test("publica uma PWA instalável sem armazenar vendas offline", async () => {
   const manifest = JSON.parse(await readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"));
   assert.equal(manifest.short_name, "Mercado+");
