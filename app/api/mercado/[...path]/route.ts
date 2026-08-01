@@ -65,6 +65,9 @@ async function proxyToMercadoApi(request: Request, context: RouteContext) {
       method: request.method,
       headers,
       body,
+      signal: AbortSignal.timeout(
+        ["GET", "HEAD"].includes(request.method) || apiPath === "/api/demo/seed" ? 7000 : 30000,
+      ),
     });
     const responseHeaders = new Headers();
     responseHeaders.set("Content-Type", upstream.headers.get("content-type") || "application/json; charset=utf-8");

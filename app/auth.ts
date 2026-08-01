@@ -70,6 +70,7 @@ export type SessionUser = {
   name: string;
   email: string;
   role: string;
+  sessionExpiresAt: string;
 };
 
 export async function getSessionUser(request?: Request): Promise<SessionUser | null> {
@@ -79,7 +80,7 @@ export async function getSessionUser(request?: Request): Promise<SessionUser | n
   const tokenHash = await hashToken(token);
   const d1 = await getD1();
   const user = await d1.prepare(
-    "SELECT users.id, users.company_id AS companyId, companies.public_key AS companyKey, companies.name AS companyName, companies.is_demo AS isDemo, users.name, users.email, users.role FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id JOIN companies ON companies.id = users.company_id WHERE auth_sessions.token_hash = ? AND datetime(auth_sessions.expires_at) > CURRENT_TIMESTAMP AND users.email_verified_at IS NOT NULL"
+    "SELECT users.id, users.company_id AS companyId, companies.public_key AS companyKey, companies.name AS companyName, companies.is_demo AS isDemo, users.name, users.email, users.role, auth_sessions.expires_at AS sessionExpiresAt FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id JOIN companies ON companies.id = users.company_id WHERE auth_sessions.token_hash = ? AND datetime(auth_sessions.expires_at) > CURRENT_TIMESTAMP AND users.email_verified_at IS NOT NULL"
     + " AND users.approval_status = 'approved'"
   ).bind(tokenHash).first<SessionUser>();
   return user ?? null;

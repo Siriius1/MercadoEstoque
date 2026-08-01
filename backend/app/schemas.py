@@ -8,6 +8,18 @@ class GoogleCredentialInput(BaseModel):
     credential: str = Field(min_length=20)
 
 
+class DemoCleanupInput(BaseModel):
+    companyKeys: list[str] = Field(min_length=1, max_length=50)
+
+    @field_validator("companyKeys")
+    @classmethod
+    def accept_only_demo_companies(cls, values: list[str]) -> list[str]:
+        unique = list(dict.fromkeys(value.strip() for value in values))
+        if any(not value.startswith("demo_") or len(value) > 64 for value in unique):
+            raise ValueError("A limpeza aceita somente empresas temporárias.")
+        return unique
+
+
 class ProductInput(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     barcode: str | None = Field(default=None, max_length=64)

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { maskEmail, normalizeEmail } from "./validation";
+import { isValidFullName, maskEmail, normalizeEmail, normalizeFullName } from "./validation";
 
 type Employee = {
   id: number;
@@ -54,6 +54,11 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
     event.preventDefault();
     setError("");
     const data = Object.fromEntries(new FormData(event.currentTarget));
+    data.name = normalizeFullName(data.name);
+    if (!isValidFullName(data.name)) {
+      setError("Informe o nome e sobrenome do funcionário.");
+      return;
+    }
     const response = await fetch(editing ? `/api/employees/${editing.id}` : "/api/employees", {
       method: editing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -66,7 +71,11 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
     }
     setEditing(undefined);
     setPreviewUrl(result.previewUrl || "");
-    setNotice(editing ? "Funcionário atualizado." : "Funcionário cadastrado. O acesso será liberado quando ele aceitar o convite.");
+    setNotice(editing
+      ? "Funcionário atualizado."
+      : result.inviteSent
+        ? "Funcionário cadastrado. O convite foi enviado por e-mail."
+        : "Funcionário cadastrado. Copie o link abaixo e envie a ele pelo WhatsApp ou e-mail.");
     await load();
   }
 
@@ -79,7 +88,9 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
       setError(result.error || "Não foi possível reenviar o convite.");
       return;
     }
-    setNotice(`Convite reenviado para ${employee.name}.`);
+    setNotice(result.inviteSent
+      ? `Convite reenviado por e-mail para ${employee.name}.`
+      : `O e-mail não aceitou o envio. Copie o novo convite de ${employee.name}.`);
     setPreviewUrl(result.previewUrl || "");
   }
 
@@ -104,7 +115,7 @@ export default function EmployeesSection({ currentUser }: { currentUser: { email
       <div><small>EQUIPE</small><h1>Funcionários</h1><p>Cadastre e gerencie os acessos da sua equipe.</p></div>
       <button className="primary" onClick={() => { setError(""); setEditing(null); }}>+ Novo funcionário</button>
     </div>
-    {notice && <div className="employee-notice"><span>{notice}</span>{previewUrl && <button type="button" onClick={async () => { await navigator.clipboard.writeText(previewUrl); setNotice("Link do convite copiado. Abra-o em uma janela anônima para testar."); }}>Copiar convite de teste</button>}</div>}
+    {notice && <div className="employee-notice"><span>{notice}</span>{previewUrl && <button type="button" onClick={async () => { await navigator.clipboard.writeText(previewUrl); setNotice("Link do convite copiado. Agora você pode enviá-lo ao funcionário."); }}>Copiar link do convite</button>}</div>}
     {error && editing === undefined && <p className="form-error">{error}</p>}
     <div className="toolbar">
       <label className="search"><span>⌕</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar funcionário, e-mail ou função..." /></label>

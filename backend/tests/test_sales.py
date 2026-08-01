@@ -61,6 +61,7 @@ def test_api_rejects_requests_without_internal_key() -> None:
 
 
 def test_cashier_cannot_access_administrative_api_routes() -> None:
+    reset_database()
     headers = api_headers("test-company")
     headers["X-Mercado-User-Role"] = "cashier"
     with TestClient(app, headers=headers) as client:
@@ -296,6 +297,12 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
         assert movement["saleId"] == sale["id"]
         assert movement["previousStock"] == 3
         assert movement["resultingStock"] == 1
+        report = client.get("/api/reports/sales").json()
+        assert report["todayTotal"] == 20
+        assert report["todayCount"] == 1
+        assert report["monthTotal"] == 20
+        assert report["monthCount"] == 1
+        assert len(report["daily"]) == 24
 
         failed_response = client.post(
             "/api/sales",
@@ -321,6 +328,9 @@ def test_sale_is_atomic_and_updates_stock_and_movements() -> None:
         cancelled_sale = cancellation.json()["sale"]
         assert cancelled_sale["status"] == "cancelled"
         assert cancelled_sale["total"] == 20
+        cancelled_report = client.get("/api/reports/sales").json()
+        assert cancelled_report["todayTotal"] == 0
+        assert cancelled_report["todayCount"] == 0
         assert client.get("/api/products").json()["products"][0]["currentStock"] == 3
         movements = client.get("/api/movements").json()["movements"]
         assert movements[0]["reason"] == f"Cancelamento da venda #{sale['id']}"

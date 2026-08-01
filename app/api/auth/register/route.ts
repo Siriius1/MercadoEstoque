@@ -2,6 +2,7 @@ import { getD1 } from "../../../../db";
 import { hashPassword, hashToken, randomToken } from "../../../auth";
 import { sendOwnerApprovalRequest } from "../../../mailer";
 import { isValidEmail, isValidFullName, normalizeEmail, normalizeFullName } from "../../../validation";
+import { enforceRateLimit } from "../../../rate-limit";
 
 export async function POST(request: Request) {
   const body = await request.json() as Record<string, unknown>;
@@ -11,6 +12,8 @@ export async function POST(request: Request) {
   if (!isValidFullName(name)) return Response.json({ error: "Informe seu nome e sobrenome." }, { status: 400 });
   if (!isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
   if (password.length < 8) return Response.json({ error: "A senha precisa ter pelo menos 8 caracteres." }, { status: 400 });
+  const limited = await enforceRateLimit(request, "register", 3, 24 * 60 * 60, email);
+  if (limited) return limited;
 
   const d1 = await getD1();
   const existing = await d1.prepare("SELECT id, company_id, email_verified_at, approval_status, role FROM users WHERE email = ?").bind(email).first<{ id: number; company_id: number; email_verified_at: string | null; approval_status: string; role: string }>();

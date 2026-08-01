@@ -25,7 +25,7 @@ declare global {
 }
 
 export default function AuthScreen({ initialMode, token, googleClientId, registrationOpen, welcome }: { initialMode: Mode; token: string; googleClientId: string; registrationOpen: boolean; welcome: string }) {
-  const welcomeMessage = welcome === "approved" ? "Seu cadastro foi aprovado. Sua empresa está pronta para receber você." : welcome === "1" ? "Acesso ativado. Entre com sua nova senha ou com o Google." : "";
+  const welcomeMessage = welcome === "approved" ? "Seu cadastro foi aprovado. Sua empresa está pronta para receber você." : welcome === "1" ? "Acesso ativado. Entre com sua nova senha ou com o Google." : welcome === "demo-expired" ? "A demonstração de 2 horas terminou. Você pode iniciar uma nova sessão quando quiser." : "";
   const [message, setMessage] = useState(welcomeMessage);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(["verify", "approve", "reject"].includes(initialMode));
@@ -159,7 +159,7 @@ export default function AuthScreen({ initialMode, token, googleClientId, registr
         {initialMode === "login" && <>
           <button className="auth-demo-button" type="button" disabled={busy} onClick={enterDemo}>
             <strong>Testar demonstração</strong>
-            <small>Acesso completo de administrador, sem cadastro</small>
+            <small>Acesso completo por 2 horas, sem cadastro</small>
           </button>
           <div className="auth-divider"><span>ou acesse sua conta</span></div>
           <div className="google-login">{googleClientId ? <div ref={googleButton}/> : <button type="button" disabled title="Falta configurar o identificador do Google">Continuar com Google</button>}</div>

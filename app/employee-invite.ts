@@ -28,5 +28,15 @@ export async function createEmployeeInvite({
     d1.prepare("INSERT INTO auth_tokens (user_id, token_hash, type, expires_at) VALUES (?, ?, 'employee_invite', ?)").bind(userId, tokenHash, expiresAt),
   ]);
   const invitationUrl = `${origin}/?auth=invite&token=${encodeURIComponent(token)}`;
-  return sendAuthEmail({ to: email, name, url: invitationUrl, kind: "invite" });
+  try {
+    return await sendAuthEmail({ to: email, name, url: invitationUrl, kind: "invite" });
+  } catch (error) {
+    // Enquanto o remetente do Resend estiver no modo de testes, o administrador
+    // ainda pode entregar manualmente o convite sem perder o cadastro criado.
+    return {
+      sent: false,
+      previewUrl: invitationUrl,
+      deliveryWarning: error instanceof Error ? error.message : "O e-mail não pôde ser enviado.",
+    };
+  }
 }

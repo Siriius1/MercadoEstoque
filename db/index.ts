@@ -26,6 +26,8 @@ async function initializeDatabase() {
     d1.prepare("CREATE INDEX IF NOT EXISTS auth_sessions_token_idx ON auth_sessions (token_hash)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens (user_id)"),
     d1.prepare("CREATE INDEX IF NOT EXISTS auth_tokens_token_idx ON auth_tokens (token_hash)"),
+    d1.prepare("CREATE TABLE IF NOT EXISTS rate_limits (key text PRIMARY KEY NOT NULL, attempts integer DEFAULT 1 NOT NULL, reset_at text NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
+    d1.prepare("CREATE INDEX IF NOT EXISTS rate_limits_reset_idx ON rate_limits (reset_at)"),
     d1.prepare("CREATE TABLE IF NOT EXISTS payment_settings (id integer PRIMARY KEY AUTOINCREMENT NOT NULL, company_id integer DEFAULT 1 NOT NULL UNIQUE REFERENCES companies(id) ON DELETE CASCADE, pix_enabled integer DEFAULT 0 NOT NULL, pix_key_type text DEFAULT 'cnpj' NOT NULL, pix_key text DEFAULT '' NOT NULL, pix_receiver_name text DEFAULT '' NOT NULL, pix_city text DEFAULT '' NOT NULL, updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL)"),
   ]);
   for (const table of ["suppliers", "products", "movements", "users"]) {

@@ -1,11 +1,14 @@
 import { getD1 } from "../../../../db";
 import { hashToken, randomToken, sessionCookie, verifyPassword } from "../../../auth";
 import { normalizeEmail } from "../../../validation";
+import { enforceRateLimit } from "../../../rate-limit";
 
 export async function POST(request: Request) {
   const body = await request.json() as Record<string, unknown>;
   const email = normalizeEmail(body.email);
   const password = String(body.password ?? "");
+  const limited = await enforceRateLimit(request, "login", 8, 15 * 60, email);
+  if (limited) return limited;
   const d1 = await getD1();
   const user = await d1.prepare("SELECT id, password_hash, email_verified_at, approval_status FROM users WHERE email = ?").bind(email).first<{ id: number; password_hash: string; email_verified_at: string | null; approval_status: string }>();
   if (!user || !(await verifyPassword(password, user.password_hash))) return Response.json({ error: "E-mail ou senha incorretos." }, { status: 401 });

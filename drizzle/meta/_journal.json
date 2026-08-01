@@ -57,6 +57,13 @@
       "when": 1785530805871,
       "tag": "0007_ambitious_robin_chapel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785620529435,
+      "tag": "0008_robust_quasar",
+      "breakpoints": true
     }
   ]
 }

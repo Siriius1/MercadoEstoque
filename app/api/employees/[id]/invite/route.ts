@@ -22,5 +22,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     email: employee.email,
     origin: new URL(request.url).origin,
   });
-  return Response.json({ message: "Convite reenviado.", previewUrl: mail.previewUrl });
+  return Response.json({
+    message: mail.sent ? "Convite reenviado por e-mail." : "Novo convite gerado para envio manual.",
+    inviteSent: mail.sent,
+    previewUrl: mail.previewUrl,
+    deliveryWarning: "deliveryWarning" in mail ? mail.deliveryWarning : null,
+  });
 }

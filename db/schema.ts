@@ -97,6 +97,13 @@ export const authTokens = sqliteTable("auth_tokens", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [index("auth_tokens_user_idx").on(table.userId), index("auth_tokens_token_idx").on(table.tokenHash)]);
 
+export const rateLimits = sqliteTable("rate_limits", {
+  key: text("key").primaryKey(),
+  attempts: integer("attempts").notNull().default(1),
+  resetAt: text("reset_at").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [index("rate_limits_reset_idx").on(table.resetAt)]);
+
 export const paymentSettings = sqliteTable("payment_settings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyId: integer("company_id").notNull().default(1).unique().references(() => companies.id, { onDelete: "cascade" }),

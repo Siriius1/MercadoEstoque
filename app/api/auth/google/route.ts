@@ -1,9 +1,12 @@
 import { getD1 } from "../../../../db";
 import { hashToken, randomToken, sessionCookie } from "../../../auth";
 import { verifyGoogleCredential } from "../../../google-auth";
+import { enforceRateLimit } from "../../../rate-limit";
 
 export async function POST(request: Request) {
   try {
+    const limited = await enforceRateLimit(request, "google-login", 12, 15 * 60);
+    if (limited) return limited;
     const origin = request.headers.get("origin");
     if (origin && origin !== new URL(request.url).origin) return Response.json({ error: "Origem de acesso inválida." }, { status: 403 });
     const requestUrl = new URL(request.url);

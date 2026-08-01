@@ -32,11 +32,11 @@ export async function POST(request: Request) {
   if (existing) return Response.json({ error: "Este e-mail já está cadastrado." }, { status: 409 });
   const employee = await d1.prepare("INSERT INTO users (company_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?) RETURNING id, name, email, role").bind(access.user!.companyId, name, email, `invite_pending$${randomToken()}`, role).first<{ id: number; name: string; email: string; role: string }>();
   if (!employee) return Response.json({ error: "Não foi possível criar o funcionário." }, { status: 500 });
-  try {
-    const mail = await createEmployeeInvite({ d1, userId: employee.id, name, email, origin: new URL(request.url).origin });
-    return Response.json({ employee, previewUrl: mail.previewUrl }, { status: 201 });
-  } catch (error) {
-    await d1.prepare("DELETE FROM users WHERE id = ?").bind(employee.id).run();
-    return Response.json({ error: error instanceof Error ? error.message : "Não foi possível enviar o convite." }, { status: 502 });
-  }
+  const mail = await createEmployeeInvite({ d1, userId: employee.id, name, email, origin: new URL(request.url).origin });
+  return Response.json({
+    employee,
+    inviteSent: mail.sent,
+    previewUrl: mail.previewUrl,
+    deliveryWarning: "deliveryWarning" in mail ? mail.deliveryWarning : null,
+  }, { status: 201 });
 }

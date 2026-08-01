@@ -13,6 +13,7 @@ type Product = { id:number; sku:string; barcode:string; name:string; category:st
 type Supplier = { id:number; name:string; document:string; contact:string; email:string; phone:string; productCount:number; active:boolean };
 type Movement = { id:number; productId:number; productName:string; sku:string; unit:string; type:string; quantity:number; previousStock:number; resultingStock:number; unitCost:number; reason:string; notes:string; saleId?:number|null; operatorName?:string; closureId?:number; periodStart?:string; periodEnd?:string; systemCashTotal?:number; declaredCashTotal?:number; difference?:number; cashSalesCount?:number; totalSalesCount?:number; createdAt:string };
 type Summary = { totalProducts:number; lowStock:number; stockValue:number; retailValue:number; totalSuppliers:number };
+type SalesReport = { timezone:string; todayLabel:string; monthLabel:string; daily:{label:string;value:number;count:number}[]; monthly:{label:string;value:number;count:number}[]; todayTotal:number; todayCount:number; monthTotal:number; monthCount:number };
 type DeleteTarget = { kind:"products"|"suppliers"; id:number; name:string; linkedCount:number };
 type ProductSortKey = "name"|"sku"|"supplier"|"cost"|"sale"|"stock"|"status";
 type Theme = "light"|"dark";
@@ -20,13 +21,14 @@ type Theme = "light"|"dark";
 const money = (value = 0) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 const dateTime = (value:string) => { const normalized=value.replace(" ","T"); const hasTimezone=/Z$|[+-]\d{2}:\d{2}$/.test(normalized); return new Intl.DateTimeFormat("pt-BR", { dateStyle:"short", timeStyle:"short" }).format(new Date(hasTimezone?normalized:`${normalized}Z`)); };
 const initials = (name:string) => name.split(" ").slice(0, 2).map(part => part[0]).join("").toUpperCase();
-export default function Dashboard({user}:{user:{name:string;email:string;role:string;companyName:string;isDemo:boolean}}) {
+export default function Dashboard({user}:{user:{name:string;email:string;role:string;companyName:string;isDemo:boolean;sessionExpiresAt:string}}) {
   const isCashier = user.role === "cashier";
   const [section, setSection] = useState<Section>(isCashier ? "vendas" : "painel");
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [summary, setSummary] = useState<Summary>({ totalProducts:0, lowStock:0, stockValue:0, retailValue:0, totalSuppliers:0 });
+  const [salesReport, setSalesReport] = useState<SalesReport>({ timezone:"America/Sao_Paulo", todayLabel:"", monthLabel:"", daily:[], monthly:[], todayTotal:0, todayCount:0, monthTotal:0, monthCount:0 });
   const [recent, setRecent] = useState<Movement[]>([]);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<"product"|"supplier"|"movement"|null>(null);
@@ -36,6 +38,8 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
   const [menuOpen, setMenuOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<DeleteTarget|null>(null);
   const [theme, setTheme] = useState<Theme>("light");
+  const [demoSecondsLeft, setDemoSecondsLeft] = useState(() => Math.max(0, Math.floor((new Date(user.sessionExpiresAt).getTime() - Date.now()) / 1000)));
+  const [apiWaking, setApiWaking] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -50,15 +54,16 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
         setProducts(data.products);
         return;
       }
-      const [p, s, m, d] = await Promise.all([
+      const [p, s, m, d, r] = await Promise.all([
         mercadoApiFetch("/api/products"),
         mercadoApiFetch("/api/suppliers"),
         mercadoApiFetch("/api/movements"),
         mercadoApiFetch("/api/dashboard"),
+        mercadoApiFetch("/api/reports/sales"),
       ]);
-      if (![p,s,m,d].every(response => response.ok)) throw new Error();
-      const [pd,sd,md,dd] = await Promise.all([p.json(), s.json(), m.json(), d.json()]);
-      setProducts(pd.products); setSuppliers(sd.suppliers); setMovements(md.movements); setSummary(dd.summary); setRecent(dd.recent);
+      if (![p,s,m,d,r].every(response => response.ok)) throw new Error();
+      const [pd,sd,md,dd,rd] = await Promise.all([p.json(), s.json(), m.json(), d.json(), r.json()]);
+      setProducts(pd.products); setSuppliers(sd.suppliers); setMovements(md.movements); setSummary(dd.summary); setRecent(dd.recent); setSalesReport(rd);
     } catch { setNotice("Não foi possível carregar o banco de dados."); }
     finally { setLoading(false); }
   }, [isCashier, user.isDemo]);
@@ -76,6 +81,24 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(preferredTheme);
     document.documentElement.dataset.theme = preferredTheme;
+  }, []);
+  useEffect(() => {
+    if (!user.isDemo) return;
+    const updateRemaining = () => {
+      const remaining = Math.max(0, Math.floor((new Date(user.sessionExpiresAt).getTime() - Date.now()) / 1000));
+      setDemoSecondsLeft(remaining);
+      if (remaining === 0) {
+        void fetch("/api/auth/logout", { method:"POST" }).finally(() => { window.location.href = "/?demo=expired"; });
+      }
+    };
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [user.isDemo, user.sessionExpiresAt]);
+  useEffect(() => {
+    const handleWake = (event: Event) => setApiWaking(Boolean((event as CustomEvent<{active:boolean}>).detail?.active));
+    window.addEventListener("mercado-api-wake", handleWake);
+    return () => window.removeEventListener("mercado-api-wake", handleWake);
   }, []);
 
   function toggleTheme() {
@@ -138,6 +161,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
       : `Existem ${summary.lowStock} pendências`;
 
   return <div className="app-shell">
+    {apiWaking && <div className="server-wake" role="status" aria-live="polite"><div className="server-wake-card"><span className="server-wake-orbit"><i/><i/><b>+</b></span><small>PREPARANDO O MERCADO+</small><h2>O servidor está iniciando</h2><p>O plano gratuito descansa quando fica sem uso. Estamos acordando a API e conectando ao seu estoque.</p><div className="server-wake-progress"><i/></div><em>Isso pode levar até 50 segundos no primeiro acesso.</em></div></div>}
     {menuOpen && <button className="menu-overlay" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
     <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
       <div className="brand"><span className="brand-mark">+</span><div><strong>Mercado<span>+</span></strong><small>GESTÃO DE ESTOQUE</small></div></div>
@@ -159,7 +183,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
     <main>
       <header className="topbar"><button className="menu-button" aria-label="Menu" onClick={() => setMenuOpen(true)}>☰</button><div className="breadcrumb">Mercado+ <span>/</span> {nav.find(n => n.id === section)?.label}</div><div className="top-actions"><span className="today">{new Intl.DateTimeFormat("pt-BR", { dateStyle:"long" }).format(new Date())}</span><button className={`theme-toggle ${theme}`} type="button" onClick={toggleTheme} aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"} title={theme === "dark" ? "Mudar para modo claro" : "Mudar para modo escuro"}><span className="theme-sun" aria-hidden="true">☀</span><span className="theme-moon" aria-hidden="true">☾</span></button>{!isCashier && <button className="icon-button" aria-label={pendingText}>●{summary.lowStock > 0 && <b>{summary.lowStock}</b>}<span className="notification-tooltip" role="tooltip">{pendingText}</span></button>}<button className="logout-button" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});window.location.href="/";}}>Sair</button></div></header>
       <div className="content">
-        {user.isDemo && <div className="demo-environment-banner"><strong>Ambiente de demonstração</strong><span>Você possui acesso total. Estes dados são exclusivos desta sessão de teste.</span></div>}
+        {user.isDemo && <div className="demo-environment-banner"><strong>Ambiente de demonstração</strong><span>Dados exclusivos e temporários desta sessão.</span><time title="Tempo restante da demonstração">Expira em {String(Math.floor(demoSecondsLeft/3600)).padStart(2,"0")}:{String(Math.floor(demoSecondsLeft%3600/60)).padStart(2,"0")}:{String(demoSecondsLeft%60).padStart(2,"0")}</time></div>}
         {notice && <div className="toast">{notice}</div>}
         {loading ? <div className="loading-card">Carregando seu estoque...</div> : <>
           {!isCashier && section === "painel" && <DashboardSection summary={summary} recent={recent} lowProducts={lowProducts} onNavigate={setSection} onMovement={() => openNew("movement")} />}
@@ -168,7 +192,7 @@ export default function Dashboard({user}:{user:{name:string;email:string;role:st
           {!isCashier && section === "fornecedores" && <SuppliersSection suppliers={filteredSuppliers} search={search} setSearch={setSearch} onNew={() => openNew("supplier")} onEdit={s => openEdit("supplier", s)} onDelete={s => requestDelete({ kind:"suppliers", id:s.id, name:s.name, linkedCount:s.productCount })} />}
           {!isCashier && section === "funcionarios" && <EmployeesSection currentUser={user} />}
           {!isCashier && section === "movimentacoes" && <SalesMovementsSection movements={filteredMovements} search={search} setSearch={setSearch} onNew={() => openNew("movement")} />}
-          {!isCashier && section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} />}
+          {!isCashier && section === "relatorios" && <ReportsSection products={products} movements={movements} summary={summary} salesReport={salesReport} />}
           {!isCashier && section === "configuracoes" && <PaymentSettingsSection />}
         </>}
       </div>
@@ -232,47 +256,21 @@ function SalesChart({data,emptyText,minWidth}:{data:Array<{label:string;value:nu
   </div>;
 }
 
-function ReportsSection({products,movements,summary}:{products:Product[];movements:Movement[];summary:Summary}) {
+function ReportsSection({products,movements,summary,salesReport}:{products:Product[];movements:Movement[];summary:Summary;salesReport:SalesReport}) {
   const categories=Object.entries(products.reduce<Record<string,number>>((a,p)=>{a[p.category]=(a[p.category]||0)+p.currentStock*p.costPrice;return a;},{})).sort((a,b)=>b[1]-a[1]);
   const max=Math.max(...categories.map(c=>c[1]),1);
-  const now=new Date();
-  const cancelledSales=new Set(movements.filter(m=>m.saleId&&m.reason.startsWith("Cancelamento da venda")).map(m=>m.saleId as number));
-  const salesById=new Map<number,{date:Date;total:number}>();
-  for(const movement of movements){
-    if(!movement.saleId||cancelledSales.has(movement.saleId)||movement.reason.startsWith("Cancelamento da venda")||salesById.has(movement.saleId))continue;
-    const match=movement.notes.match(/Total da compra:\s*R\$\s*([\d.,]+)/i);
-    if(!match)continue;
-    const raw=match[1];
-    const parsed=Number(raw.includes(",")?raw.replace(/\./g,"").replace(",","."):raw);
-    if(Number.isFinite(parsed))salesById.set(movement.saleId,{date:new Date(movement.createdAt),total:parsed});
-  }
-  const sales=[...salesById.values()];
-  const dailyData=Array.from({length:24},(_,hour)=>{
-    const hourSales=sales.filter(sale=>sale.date.getFullYear()===now.getFullYear()&&sale.date.getMonth()===now.getMonth()&&sale.date.getDate()===now.getDate()&&sale.date.getHours()===hour);
-    return {label:`${String(hour).padStart(2,"0")}h`,value:hourSales.reduce((total,sale)=>total+sale.total,0),count:hourSales.length};
-  });
-  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const monthlyData=Array.from({length:daysInMonth},(_,index)=>{
-    const day=index+1;
-    const daySales=sales.filter(sale=>sale.date.getFullYear()===now.getFullYear()&&sale.date.getMonth()===now.getMonth()&&sale.date.getDate()===day);
-    return {label:String(day).padStart(2,"0"),value:daySales.reduce((total,sale)=>total+sale.total,0),count:daySales.length};
-  });
-  const todayTotal=dailyData.reduce((total,item)=>total+item.value,0);
-  const todayCount=dailyData.reduce((total,item)=>total+item.count,0);
-  const monthTotal=monthlyData.reduce((total,item)=>total+item.value,0);
-  const monthCount=monthlyData.reduce((total,item)=>total+item.count,0);
-  const monthName=new Intl.DateTimeFormat("pt-BR",{month:"long",year:"numeric"}).format(now);
+  const {daily:dailyData,monthly:monthlyData,todayTotal,todayCount,monthTotal,monthCount}=salesReport;
 
   return <><PageTitle eyebrow="ANÁLISE" title="Relatórios" description="Indicadores para tomar decisões melhores sobre o estoque."/>
     <section className="stats-grid"><Stat icon="R$" label="Custo do estoque" value={money(summary.stockValue)} detail="capital investido"/><Stat icon="↗" label="Valor de venda" value={money(summary.retailValue)} detail="potencial de receita" tone="blue"/><Stat icon="%" label="Margem potencial" value={summary.retailValue?`${Math.round((summary.retailValue-summary.stockValue)/summary.retailValue*100)}%`:"0%"} detail="sobre valor de venda" tone="yellow"/><Stat icon="⇄" label="Movimentações" value={movements.length} detail="registros no histórico" tone="cream"/></section>
     <section className="dashboard-grid reports"><article className="panel"><div className="panel-head"><div><h2>Valor por categoria</h2><p>Distribuição do custo atual</p></div></div><div className="bars">{categories.map(([name,value])=><div key={name}><div><span>{name}</span><b>{money(value)}</b></div><i><span style={{width:`${value/max*100}%`}}/></i></div>)}</div></article><article className="panel"><div className="panel-head"><div><h2>Resumo operacional</h2><p>Pontos importantes do cadastro</p></div></div><div className="report-list"><div><span>Produtos sem fornecedor</span><strong>{products.filter(p=>!p.supplierId).length}</strong></div><div><span>Produtos com estoque baixo</span><strong>{products.filter(p=>p.currentStock<=p.minimumStock).length}</strong></div><div><span>Produtos inativos</span><strong>{products.filter(p=>!p.active).length}</strong></div><div><span>Lucro bruto potencial</span><strong>{money(summary.retailValue-summary.stockValue)}</strong></div></div></article></section>
     <section className="sales-report-grid">
       <article className="panel sales-chart-card">
-        <div className="panel-head"><div><h2>Vendas de hoje</h2><p>Faturamento por hora em {new Intl.DateTimeFormat("pt-BR",{dateStyle:"long"}).format(now)}</p></div><div className="sales-chart-total"><small>{todayCount} venda(s)</small><strong>{money(todayTotal)}</strong></div></div>
+        <div className="panel-head"><div><h2>Vendas de hoje</h2><p>Faturamento por hora em {salesReport.todayLabel || "hoje"}</p></div><div className="sales-chart-total"><small>{todayCount} venda(s)</small><strong>{money(todayTotal)}</strong></div></div>
         <SalesChart data={dailyData} emptyText="Nenhuma venda registrada hoje." minWidth={820}/>
       </article>
       <article className="panel sales-chart-card">
-        <div className="panel-head"><div><h2>Vendas mensais</h2><p>Faturamento diário de {monthName}</p></div><div className="sales-chart-total"><small>{monthCount} venda(s)</small><strong>{money(monthTotal)}</strong></div></div>
+        <div className="panel-head"><div><h2>Vendas mensais</h2><p>Faturamento diário de {salesReport.monthLabel || "este mês"}</p></div><div className="sales-chart-total"><small>{monthCount} venda(s)</small><strong>{money(monthTotal)}</strong></div></div>
         <SalesChart data={monthlyData} emptyText="Nenhuma venda registrada neste mês." minWidth={960}/>
       </article>
     </section>

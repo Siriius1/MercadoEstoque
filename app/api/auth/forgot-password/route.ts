@@ -2,11 +2,14 @@ import { getD1 } from "../../../../db";
 import { hashToken, randomToken } from "../../../auth";
 import { sendAuthEmail } from "../../../mailer";
 import { isValidEmail, maskEmail, normalizeEmail } from "../../../validation";
+import { enforceRateLimit } from "../../../rate-limit";
 
 export async function POST(request: Request) {
   const body = await request.json() as Record<string, unknown>;
   const email = normalizeEmail(body.email);
   if (!isValidEmail(email)) return Response.json({ error: "Informe um e-mail válido." }, { status: 400 });
+  const limited = await enforceRateLimit(request, "forgot-password", 5, 60 * 60, email);
+  if (limited) return limited;
   const d1 = await getD1();
   const user = await d1.prepare("SELECT id, name FROM users WHERE email = ? AND email_verified_at IS NOT NULL AND approval_status = 'approved'").bind(email).first<{ id: number; name: string }>();
   let previewUrl: string | null = null;

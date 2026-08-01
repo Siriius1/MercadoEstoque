@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from secrets import compare_digest
 import re
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -20,6 +21,7 @@ from .schemas import (
     CancelSaleInput,
     CashClosureInput,
     CashRegisterOpenInput,
+    DemoCleanupInput,
     GoogleCredentialInput,
     MovementInput,
     ProductInput,
@@ -277,6 +279,23 @@ def seed_demo_company(db: Session = Depends(get_db)) -> dict:
         ))
     db.commit()
     return {"seeded": True}
+
+
+@app.post("/api/demo/cleanup")
+def cleanup_demo_companies(payload: DemoCleanupInput, db: Session = Depends(get_db)) -> dict:
+    """Remove do PostgreSQL apenas empresas temporárias já expiradas no D1."""
+    tables = (
+        "stock_movements", "sale_items", "cash_registers", "cash_closures",
+        "payment_settings", "sales", "products", "suppliers",
+    )
+    with db.begin():
+        for company_key in payload.companyKeys:
+            for table_name in tables:
+                db.execute(
+                    text(f"DELETE FROM {table_name} WHERE company_key = :company_key"),
+                    {"company_key": company_key},
+                )
+    return {"cleanedCompanies": len(payload.companyKeys)}
 
 
 def find_product(db: Session, product_id: int, lock: bool = False) -> Product:
@@ -978,4 +997,47 @@ def list_sales(db: Session = Depends(get_db)) -> dict:
             {**sale_json(sale), "itemCount": sum(number(item.quantity) for item in sale.items)}
             for sale in sales
         ]
+    }
+
+
+@app.get("/api/reports/sales")
+def sales_report(db: Session = Depends(get_db)) -> dict:
+    """Consolida as vendas no banco, sem depender do histórico limitado da interface."""
+    report_timezone = ZoneInfo("America/Sao_Paulo")
+    now = datetime.now(report_timezone)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    next_month = month_start.replace(
+        year=month_start.year + (1 if month_start.month == 12 else 0),
+        month=1 if month_start.month == 12 else month_start.month + 1,
+    )
+    sales = db.scalars(
+        select(Sale).where(
+            Sale.status == "completed",
+            Sale.created_at >= month_start.astimezone(timezone.utc),
+            Sale.created_at < next_month.astimezone(timezone.utc),
+        )
+    ).all()
+    daily = [{"label": f"{hour:02d}h", "value": 0.0, "count": 0} for hour in range(24)]
+    monthly = [
+        {"label": f"{day:02d}", "value": 0.0, "count": 0}
+        for day in range(1, (next_month - month_start).days + 1)
+    ]
+    for sale in sales:
+        local_created = sale.created_at.astimezone(report_timezone)
+        value = number(sale.total)
+        monthly[local_created.day - 1]["value"] += value
+        monthly[local_created.day - 1]["count"] += 1
+        if local_created.date() == now.date():
+            daily[local_created.hour]["value"] += value
+            daily[local_created.hour]["count"] += 1
+    return {
+        "timezone": "America/Sao_Paulo",
+        "todayLabel": now.strftime("%d/%m/%Y"),
+        "monthLabel": now.strftime("%m/%Y"),
+        "daily": daily,
+        "monthly": monthly,
+        "todayTotal": round(sum(item["value"] for item in daily), 2),
+        "todayCount": sum(item["count"] for item in daily),
+        "monthTotal": round(sum(item["value"] for item in monthly), 2),
+        "monthCount": sum(item["count"] for item in monthly),
     }
