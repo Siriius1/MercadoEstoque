@@ -1,111 +1,117 @@
-# vinext-starter
+# Mercado+
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+![Apresentação do Mercado+](public/og.png)
 
-## Prerequisites
+Sistema web completo para gestão de mercados, reunindo controle de estoque, frente de caixa, fornecedores, funcionários, movimentações e relatórios em um único ambiente.
 
-- Node.js `>=22.13.0`
+## Demonstração
 
-## Quick Start
+### [Acessar o Mercado+](https://mercado-estoque-leo.leobsads12.chatgpt.site)
+
+Clique em **Testar demonstração** para conhecer todas as funções sem precisar criar uma conta. Cada visitante recebe um ambiente isolado, com dados próprios e acesso temporário de duas horas.
+
+> No primeiro acesso, o ambiente pode levar alguns instantes para preparar os dados.
+
+## Principais funcionalidades
+
+- Cadastro, edição, busca, ordenação e exclusão de produtos;
+- Código de produto gerado automaticamente;
+- Controle de estoque e avisos de estoque baixo;
+- Cadastro de fornecedores com CPF/CNPJ, telefone e e-mail formatados;
+- Exclusão conjunta de fornecedor e produtos vinculados, mediante confirmação;
+- Frente de caixa com busca por nome, código e código de barras;
+- Pagamentos em dinheiro, cartão e PIX;
+- PIX manual com chave e QR Code configuráveis;
+- Baixa automática do estoque após cada venda;
+- Cancelamento da última venda com devolução dos itens ao estoque;
+- Abertura e fechamento de caixa com conferência de valores;
+- Histórico detalhado de vendas e movimentações;
+- Relatórios de vendas diárias e mensais;
+- Cadastro de funcionários e controle de permissões;
+- Login com e-mail e senha ou conta Google;
+- Recuperação de senha e aprovação de novos proprietários por e-mail;
+- Modo claro e escuro;
+- Layout responsivo para computador e celular;
+- Instalação como aplicativo no computador ou celular.
+
+## Segurança e organização
+
+- Cada estabelecimento possui seus próprios produtos, fornecedores, vendas e funcionários;
+- Senhas protegidas e sessões com tempo de validade;
+- Permissões diferentes para administradores e operadores de caixa;
+- Operações de venda realizadas de forma segura para evitar divergências no estoque;
+- Proteção contra excesso de tentativas de acesso e cadastro;
+- Demonstrações isoladas, temporárias e removidas automaticamente;
+- Informações confidenciais mantidas fora do repositório.
+
+## Tecnologias utilizadas
+
+### Interface
+
+- TypeScript;
+- React;
+- Next.js com Vinext;
+- CSS responsivo;
+- PWA.
+
+### Servidor e dados
+
+- Python;
+- FastAPI;
+- PostgreSQL;
+- SQLAlchemy;
+- Cloudflare D1 para contas e sessões.
+
+### Serviços
+
+- Google OAuth para acesso com Google;
+- Resend para envio de e-mails;
+- Render para o serviço de dados;
+- Neon para o banco PostgreSQL;
+- OpenAI Sites para publicação da interface.
+
+## Regras importantes implementadas
+
+Ao finalizar uma venda, o Mercado+ confirma a disponibilidade dos produtos, registra os itens e valores praticados, reduz o estoque, identifica o operador e salva toda a movimentação em conjunto. Caso alguma etapa falhe, a venda não é concluída pela metade.
+
+O cancelamento realiza o processo inverso: registra o estorno, devolve as quantidades ao estoque e mantém o histórico para conferência.
+
+## Qualidade
+
+- Testes automáticos da interface e das regras do sistema;
+- Testes de vendas, cancelamentos, estoque, permissões e fechamento de caixa;
+- Verificação automática antes de cada publicação;
+- Dependências de produção revisadas contra vulnerabilidades conhecidas.
+
+## Executando localmente
+
+### Requisitos
+
+- Node.js 22 ou superior;
+- Python 3.14;
+- PostgreSQL.
+
+### Instalação
 
 ```bash
+git clone https://github.com/Siriius1/MercadoEstoque.git
+cd MercadoEstoque
 npm install
-npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+Crie os arquivos de configuração a partir de `.env.example` e `backend/.env.example`. Depois, no Windows, execute:
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```text
+INICIAR-MERCADO.cmd
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+O projeto estará disponível em `http://localhost:3000`.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+Para encerrar, execute `PARAR-MERCADO.cmd`.
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+## Autor
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+Desenvolvido por **Leonardo Gomes Soares de Souza** — **Siirius**.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Mercado+ local
-
-Para iniciar a versão local completa, dê dois cliques em
-`INICIAR-MERCADO.cmd`. O atalho inicia o PostgreSQL, a API Python e o site em
-`http://localhost:3000`.
-
-Para encerrar os serviços, use `PARAR-MERCADO.cmd`.
-
-O PostgreSQL local usa a porta `5433` e a API fica em
-`http://127.0.0.1:8002/docs`. O navegador acessa essa API somente pela rota
-autenticada do Mercado+; chamadas diretas exigem `MERCADO_INTERNAL_API_KEY`.
-Esses serviços não publicam alterações no site online.
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- [GitHub](https://github.com/Siriius1)
+- [Demonstração online](https://mercado-estoque-leo.leobsads12.chatgpt.site)
